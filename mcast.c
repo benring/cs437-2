@@ -5,9 +5,8 @@
  * Description:  The mutlicast process 
  *
  * *************************************************************************/
-
-
-int gethostname(char*, size_t);
+#include "config.h"
+#include "message.h"
 
 /****************************************
  *   MAIN PROGRAM EXECUTION  
@@ -21,14 +20,14 @@ int main(int argc, char*argv[])
      *----------------------------------------*/
 
 	/* Networking vars */
-	struct sockaddr_in    name;
+	struct sockaddr_in    recv_addr;
 	struct sockaddr_in    send_addr;
 	struct sockaddr_in    from_addr;
 	socklen_t             from_len;
-	struct hostent        h_ent;
-	struct hostent        *p_h_ent;
-	char * host_name;
-	int                   host_num;
+	int                   mcast_addr;
+	int					  port; 
+	struct ip_mreq			mreq;
+	unsigned char			ttl_val;
 	int                   ss,sr;
 	fd_set                mask;
 	fd_set                dummy_mask,temp_mask;
@@ -36,16 +35,22 @@ int main(int argc, char*argv[])
 	int                 	sock_num;
 	char                	mess_buf[MAX_PACKET_SIZE];
 	struct timeval  		timeout;        
+	
+	
 
 	/* Message structs for interpreting bytes */
 	Message         *out_msg;
 	Message			*in_msg;
+	Message			test_msg;
 
 	/* Process's Own State */
 	int				me;
 	int				num_machines;
 	int				lts;
 	int				max_order_lts;
+	int				state;
+	int				status_count;
+	int				nak_count;
 	
 	/* All Processes States  */
 	int				mid[MAX_MACHINES];
@@ -71,6 +76,10 @@ int main(int argc, char*argv[])
 	*    (1)  Conduct program Initialization
 	* --------------------------------------------------------------- */
 
+	mcast_addr = 225 << 24 | 1 << 16 | 2 << 8 | 114;
+	port = 10140;
+
+
 	/*  Parse Command Line Args   
 	if (argc != 5) {
 		printf("usage: %s <num_of_packets> <machine_index> <num_of_machines> <loss_rate>\n", argv[0]);
@@ -93,46 +102,48 @@ int main(int argc, char*argv[])
 	}
 */
 	/* Open & Bind socket for receiving */
-/*	printDB("\t Open & Bind Receiving Socket");
+	printdb("\t Open & Bind Receiving Socket\n");
 	sr = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sr<0) {
 		perror("Ucast: socket");
 		exit(1);
 	}
-	name.sin_family = AF_INET;
-	name.sin_addr.s_addr = INADDR_ANY;
-	name.sin_port = htons(PORT);
-	if ( bind( sr, (struct sockaddr *)&name, sizeof(name) ) < 0 ) {
-		perror("Ucast: bind");
+	recv_addr.sin_family = AF_INET;
+	recv_addr.sin_addr.s_addr = INADDR_ANY;
+	recv_addr.sin_port = htons(port);
+	if ( bind( sr, (struct sockaddr *)&recv_addr, sizeof(recv_addr) ) < 0 ) {
+		perror("Mcast: bind");
 		exit(1);
 	}
-*/
-	/* Open & Bind socket for sending */
+
+	mreq.imr_multiaddr.s_addr = htonl(mcast_addr);
+	mreq.imr_interface.s_addr = INADDR_ANY;
+	if (setsockopt(sr, IPPROTO_IP, IP_ADD_MEMBERSHIP, 
+		(void *)&mreq, sizeof(mreq))<0)  {
+			perror("Mcast: problem with setting sock option");
+		}
+		
+	/* Open & Bind socket for sending multicast */
+	printdb("\t Open & Bind Sending Socket\n");
+	ttl_val = 1;
 	
-/******  TODO:  SET UP SENDING SOCKET FOR MULTICAST **********/
-	
-/*	printDB("\t Open & Bind Sending Socket");
 	ss = socket(AF_INET, SOCK_DGRAM, 0); 
 	if (ss<0) {
-		perror("Ucast: socket");
+		perror("Mcast: socket");
 		exit(1);
 	}
-	p_h_ent = gethostbyname(host_name);
-	if ( p_h_ent == NULL ) {
-		printdb("Ucast: gethostbyname error.\n");
-		exit(1);
-	}
-	memcpy( &h_ent, p_h_ent, sizeof(h_ent));
-	memcpy( &host_num, h_ent.h_addr_list[0], sizeof(host_num) );
 
+	if (setsockopt(ss, IPPROTO_IP, IP_MULTICAST_TTL, 
+		(void *)&ttl_val, sizeof(ttl_val)) < 0)  {
+			perror("Mcast: problem with setting sending sock option");
+		}
 	send_addr.sin_family = AF_INET;
-	send_addr.sin_addr.s_addr = host_num;
-	send_addr.sin_port = htons(PORT);
+	send_addr.sin_addr.s_addr = htonl(mcast_addr);
+	send_addr.sin_port = htons(port);
 
 	FD_ZERO( &mask );
 	FD_ZERO( &dummy_mask );
 	FD_SET( sr, &mask );
-*/	
 
 	state = IDLE;
 	lts = 0;
@@ -148,7 +159,7 @@ int main(int argc, char*argv[])
      *
      *------------------------------------------------------------------*/
 
-	for(;;) {
+/*	for(;;) {  */
 		/*---------------------------------------------------------
 		 * (1)  Implement SEND Algorithm
 		 *--------------------------------------------------------*/
@@ -170,19 +181,23 @@ int main(int argc, char*argv[])
 		 * 		3. Store Message in buffer
 		 * 		4. Send message
 		  */
-		while ((msg_count <= num_packets) && (!message_buffer[me].isFull)) {
+/*		while ((msg_count <= num_packets) && (!message_buffer[me].isFull)) {
 			out_msg = create_message(++lts);
 			message_buffer[me].append(out_msg());   /***  TODO:  WHAT DO WE ACTUALLY STORE????  ***/
-			sendto(ss,(char *) &out_msg, sizeof(Message), 0,
+/*			sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 			       (struct sockaddr *)&send_addr, sizeof(send_addr));
 		}
 		
 		/*  Send Lost messages  */
-		while (!lost_msg_list.isEmpty())  {
+/*		while (!lost_msg_list.isEmpty())  {
 			out_msg = lost_msg_list.deq();
 			sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 			       (struct sockaddr *)&send_addr, sizeof(send_addr));
 		}
+*/			
+	test_msg.tag = 'A';
+/*	sendto(ss,(char *) &test_msg, sizeof(Message), 0,
+			       (struct sockaddr *)&send_addr, sizeof(send_addr));
 		
 	
 		/*---------------------------------------------------------
@@ -206,23 +221,22 @@ int main(int argc, char*argv[])
 
 		/*  Receive Data  */
 		sock_num = select(FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
-		if (num > 0 && FD_ISSET(sr, &temp_mask)) {
+		if (sock_num > 0 && FD_ISSET(sr, &temp_mask)) {
 			from_len = sizeof(from_addr);
 
 			/*** TODO:  change to recv_dbg()  ***/
 			bytes = recvfrom(sr, mess_buf, sizeof(mess_buf), 0,
 			                  (struct sockaddr *)&from_addr, &from_len );
-			from_ip = from_addr.sin_addr.s_addr;
 			in_msg = (Message *) mess_buf;
-			printdb("received some data TAG=%c, FROM=%d\n", in_msg->tag, in_msg->src);
+			printdb("received some data TAG=%c, FROM=%d\n", in_msg->tag, in_msg->pid);
 		} else {
-			status_count = STATUS_TRIGGER;
+			status_count = STATUS_TRIGGER;  /*  Always send STATUS MSG on timeout -- ??? */
 			if (state == RECV)  {
 				nak_count++;			/** TODO:  Determine NAK Handling  **/
 				state == SEND;			
 			}
 			printdb("timed_out when trying to receive\n");
-			continue;
+/*			continue;  */
 		}
 
 		from_pid = in_msg->pid;
@@ -230,39 +244,39 @@ int main(int argc, char*argv[])
 		/*---------------------------------------------------------
 		 * (3)  Implement RECV Algorithm
 		 *--------------------------------------------------------*/
-		switch (in_msg->tag)  {
+/*		switch (in_msg->tag)  {
 		
-			case DATA_MSG:
+/*			case DATA_MSG:
 				/*  STORE DATA  */
-				elm.lts = in_msg->payload[1];
+/*				elm.lts = in_msg->payload[1];
 				elm.data = in_msg->payload[2];
 				/*  Update RECV State */
-				recv_state[from_pid] = message_buffer[from_pid].insert(in_msg->payload[0], elm)
-				break;
+/*				recv_state[from_pid] = message_buffer[from_pid].insert(in_msg->payload[0], elm) */
+/*				break;
 			
 			
 			case STATUS_MSG:
 				/*  Update SEND State  */
-				send_state[from_pid] = in_msg->payload[me];
+/*				send_state[from_pid] = in_msg->payload[me];
 				/*  CHECK LTS for message delivery  */
 
-				break;
+/*				break;
 				
 			
 			case NAK_MSG:
 				/*  Update LOST msg queue  */
-				break;
+/*				break;
 				
 			
 			case EOM_MSG:
 				/*  Process EOM Message  */
-				break;
+/*				break;
 				
 			default:
 				printdb("Process Received erroneous message");
 		}
+*/
 
-
-	}
+/*	}  */
 	return 0;
 }
