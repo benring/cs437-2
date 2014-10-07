@@ -7,6 +7,7 @@
  * *************************************************************************/
 #include "config.h"
 #include "message.h"
+#include "buffer.h"
 
 /****************************************
  *   MAIN PROGRAM EXECUTION  
@@ -39,7 +40,7 @@ int main(int argc, char*argv[])
 	
 
 	/* Message structs for interpreting bytes */
-	Message         *out_msg;
+	Message         out_msg;
 	Message			*in_msg;
 	Message			test_msg;
 
@@ -51,6 +52,8 @@ int main(int argc, char*argv[])
 	int				state;
 	int				status_count;
 	int				nak_count;
+	int				msg_count;
+	int				num_packets;
 	
 	/* All Processes States  */
 	int				mid[MAX_MACHINES];
@@ -95,6 +98,9 @@ int main(int argc, char*argv[])
 	/*   recv_dbg_init(loss_rate, me);  */
 
 	/* Open output file */
+	num_packets = 5;   
+
+
 /*	printDB("\t Open output file");
 	if ((source = fopen(dest_file, "w")) == NULL)  {
 		perror("ERROR opening destination file");
@@ -146,8 +152,10 @@ int main(int argc, char*argv[])
 	FD_SET( sr, &mask );
 
 	state = IDLE;
-	lts = 0;
+	lts = -1;
 	max_order_lts = 0;
+	msg_count = 0;
+	out_msg.pid = me;
 	
 	for (index=0; index < num_machines; index++) {
 		mid[index] = 0;
@@ -166,11 +174,14 @@ int main(int argc, char*argv[])
 
 		if (status_count >= STATUS_TRIGGER)  {
 			status_count = 0;
+			out_msg.tag = STATUS_MSG;
 			/*  SEND STATUS MESSAGE  */
+			
 		}
 		
 		if (nak_count >= NAK_TRIGGER)  {
 			nak_count = 0;
+			out_msg.tag = NAK_MSG;
 			/* CHECK NAK HEURISTIC  */
 			/*  SEND NAK MESSAGE  */
 		}
@@ -181,10 +192,14 @@ int main(int argc, char*argv[])
 		 * 		3. Store Message in buffer
 		 * 		4. Send message
 		  */
-/*		while ((msg_count <= num_packets) && (!message_buffer[me].isFull)) {
-			out_msg = create_message(++lts);
-			message_buffer[me].append(out_msg());   /***  TODO:  WHAT DO WE ACTUALLY STORE????  ***/
-/*			sendto(ss,(char *) &out_msg, sizeof(Message), 0,
+		out_msg.tag = DATA_MSG;
+		while ((msg_count <= num_packets)) {  /* && (!message_buffer[me].isFull)) {  */
+			out_msg.payload[0] = msg_count++;
+			out_msg.payload[1] = ++lts; 
+			out_msg.payload[2] = lts+msg_count;
+		
+		/*	buffer_append (message_buffer[me], lts, out_msg.payload[2]);   /***  TODO:  WHAT DO WE ACTUALLY STORE????  ***/
+			sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 			       (struct sockaddr *)&send_addr, sizeof(send_addr));
 		}
 		
@@ -244,15 +259,15 @@ int main(int argc, char*argv[])
 		/*---------------------------------------------------------
 		 * (3)  Implement RECV Algorithm
 		 *--------------------------------------------------------*/
-/*		switch (in_msg->tag)  {
+		switch (in_msg->tag)  {
 		
-/*			case DATA_MSG:
+			case DATA_MSG:
 				/*  STORE DATA  */
-/*				elm.lts = in_msg->payload[1];
-				elm.data = in_msg->payload[2];
+				printdb("Received DATA: LTS=%d,  VAL=%d\n", in_msg->payload[1], in_msg->payload[2]);
+				
 				/*  Update RECV State */
 /*				recv_state[from_pid] = message_buffer[from_pid].insert(in_msg->payload[0], elm) */
-/*				break;
+				break;
 			
 			
 			case STATUS_MSG:
@@ -260,23 +275,23 @@ int main(int argc, char*argv[])
 /*				send_state[from_pid] = in_msg->payload[me];
 				/*  CHECK LTS for message delivery  */
 
-/*				break;
+				break;
 				
 			
 			case NAK_MSG:
 				/*  Update LOST msg queue  */
-/*				break;
+				break;
 				
 			
 			case EOM_MSG:
 				/*  Process EOM Message  */
-/*				break;
+				break;
 				
 			default:
 				printdb("Process Received erroneous message");
 		}
-*/
 
-/*	}  */
+
+	/*}   */
 	return 0;
 }

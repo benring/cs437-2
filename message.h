@@ -19,7 +19,7 @@
 /*  MESSAGE TAGS  */
 #define DATA_MSG 'D'
 #define STATUS_MSG 'A'
-#define NAK_MSG 'H'
+#define NAK_MSG 'H' 
 #define EOM_MSG 'E'
 
 
@@ -32,6 +32,7 @@ typedef struct Message {
 
 
 typedef struct Value {
+	char active;
 	int lts;
 	int data;
 } Value;
@@ -46,10 +47,10 @@ typedef struct Value {
  *  payload[0:MAX_MACHINES] = mid
  * 
  * NAK MESSAGE:
- *  payload[0] = # machines
- *  payload[1] = # lost message for pid0
- *  payload[2..n] = pid0 lost message ID's
- *  payload[n+1] = # lost messages for pid1
+ *  payload[0] = # lost msgs for PID 0
+ *  payload[1..29] = lost messages, PID 0
+ *  payload[30] = pid1
+ *  payload[60] = pid2
  *  etc.....
 */
 

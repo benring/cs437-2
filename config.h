@@ -41,14 +41,17 @@
 /*  COMMON DECLARATIONS   */
 #define TRUE 1
 #define FALSE 0
-#define MAX_MACHINES 10
-#define TIMEOUT_IDLE 5
+#define ACTIVE 'A'
+#define INACTIVE 'X'
+#define TIMEOUT_IDLE 30
 #define TIMEOUT_RECV 100000
+
+#define MAX_MACHINES 10
 #define STATUS_TRIGGER 8
-#define STATUS_NAK 32
-#define MAX_PACKET_SIZE 1212    /*  ?????? */
 #define NAK_TRIGGER 32
-#define STATUS_TRIGGER 8
+
+#define MAX_PACKET_SIZE 1212    /*  ?????? */
+#define MAX_BUFFER_SIZE 32
 
 /*  STATES  */
 #define IDLE 0
