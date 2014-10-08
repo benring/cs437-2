@@ -43,8 +43,9 @@ int main(int argc, char*argv[])
 	Message         out_msg;
 	Message			*in_msg;
 	Message			test_msg;
+	Value			elm;
 
-	/* Process's Own State */
+	/* Process's Internal State */
 	int				me;
 	int				num_machines;
 	int				lts;
@@ -52,8 +53,18 @@ int main(int argc, char*argv[])
 	int				state;
 	int				status_count;
 	int				nak_count;
+
+	/*  Outgoing Message State (send)  */
 	int				msg_count;
 	int				num_packets;
+	int				max_ack[MAX_MACHINES];
+
+	
+	/*  All Message State (receive)  */
+	buffer			message_buffer[MAX_MACHINES];
+	int				max_mid[MAX_MACHINES];
+	int				delivered;
+	
 	
 	/* All Processes States  */
 	int				mid[MAX_MACHINES];
@@ -72,6 +83,8 @@ int main(int argc, char*argv[])
 
 	/*  Other vars	*/
 	int				index;
+	int				min_lts;
+	int	i;
 
 
 
@@ -82,7 +95,13 @@ int main(int argc, char*argv[])
 	mcast_addr = 225 << 24 | 1 << 16 | 2 << 8 | 114;
 	port = 10140;
 
-
+	if (argc != 2) {
+		me = 0;
+	}
+	else {
+		me = atoi(argv[1]);
+	}
+	num_packets = 20;
 	/*  Parse Command Line Args   
 	if (argc != 5) {
 		printf("usage: %s <num_of_packets> <machine_index> <num_of_machines> <loss_rate>\n", argv[0]);
@@ -98,7 +117,7 @@ int main(int argc, char*argv[])
 	/*   recv_dbg_init(loss_rate, me);  */
 
 	/* Open output file */
-	num_packets = 5;   
+   
 
 
 /*	printDB("\t Open output file");
@@ -156,9 +175,12 @@ int main(int argc, char*argv[])
 	max_order_lts = 0;
 	msg_count = 0;
 	out_msg.pid = me;
+	delivered = 0;
 	
-	for (index=0; index < num_machines; index++) {
+	for (index=0; index < MAX_MACHINES; index++) {
 		mid[index] = 0;
+		max_mid[index] = -1;
+		max_ack[index] = -1;
 	}
 
     /*------------------------------------------------------------------
@@ -167,14 +189,18 @@ int main(int argc, char*argv[])
      *
      *------------------------------------------------------------------*/
 
-/*	for(;;) {  */
+	for(i=0; i<20; i++) {  
 		/*---------------------------------------------------------
 		 * (1)  Implement SEND Algorithm
 		 *--------------------------------------------------------*/
 
 		if (status_count >= STATUS_TRIGGER)  {
+			
 			status_count = 0;
 			out_msg.tag = STATUS_MSG;
+			for (index=-; index<MAX_MACHINES; index++) {
+				out_msg.payload[index] = max_mid[index];
+			}
 			/*  SEND STATUS MESSAGE  */
 			
 		}
@@ -193,12 +219,15 @@ int main(int argc, char*argv[])
 		 * 		4. Send message
 		  */
 		out_msg.tag = DATA_MSG;
-		while ((msg_count <= num_packets)) {  /* && (!message_buffer[me].isFull)) {  */
+		while ((msg_count <= num_packets) && (!buffer_isFull(&message_buffer[me]))) { 
+			printdb("Sending DATA: LTS=%d\n", lts);
+			lts++;
 			out_msg.payload[0] = msg_count++;
-			out_msg.payload[1] = ++lts; 
-			out_msg.payload[2] = lts+msg_count;
+			out_msg.payload[1] = lts; 
+			out_msg.payload[2] = (lts+msg_count)*(me+2);
 		
 		/*	buffer_append (message_buffer[me], lts, out_msg.payload[2]);   /***  TODO:  WHAT DO WE ACTUALLY STORE????  ***/
+			buffer_append(&message_buffer[me], out_msg.payload[1], out_msg.payload[2]);
 			sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 			       (struct sockaddr *)&send_addr, sizeof(send_addr));
 		}
@@ -210,9 +239,6 @@ int main(int argc, char*argv[])
 			       (struct sockaddr *)&send_addr, sizeof(send_addr));
 		}
 */			
-	test_msg.tag = 'A';
-/*	sendto(ss,(char *) &test_msg, sizeof(Message), 0,
-			       (struct sockaddr *)&send_addr, sizeof(send_addr));
 		
 	
 		/*---------------------------------------------------------
@@ -262,19 +288,32 @@ int main(int argc, char*argv[])
 		switch (in_msg->tag)  {
 		
 			case DATA_MSG:
-				/*  STORE DATA  */
+				/*  STORE DATA  & UPDATE MAX_MID RECV STATE */
 				printdb("Received DATA: LTS=%d,  VAL=%d\n", in_msg->payload[1], in_msg->payload[2]);
-				
-				/*  Update RECV State */
-/*				recv_state[from_pid] = message_buffer[from_pid].insert(in_msg->payload[0], elm) */
+				max_mid[from_pid] = buffer_put (&message_buffer[from_pid], 
+					in_msg->payload[1], in_msg->payload[2], in_msg->payload[0]);
 				break;
 			
 			
 			case STATUS_MSG:
 				/*  Update SEND State  */
-/*				send_state[from_pid] = in_msg->payload[me];
+				if (in_msg->payload[me] > max_ack[from_pid])  {
+					max_ack[from_pid] = in_msg->payload[me];
+				}
 				/*  CHECK LTS for message delivery  */
+				min_lts = delivered;
 
+/*** ======================>>>>>  TODO HERE <<<================================  ***/
+
+				can_deliver = TRUE;
+				while (can_deliver)  {
+					for (index=0; index <num_machines; index++)  {
+						
+						/*  DELIVERY ALGORITHM  */
+						
+					}
+				}
+				
 				break;
 				
 			
@@ -292,6 +331,6 @@ int main(int argc, char*argv[])
 		}
 
 
-	/*}   */
+	} 
 	return 0;
 }

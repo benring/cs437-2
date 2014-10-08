@@ -20,11 +20,15 @@
 /*  buffer_init:  creates & returns a pointer to a new, empty buffer  */
 buffer * buffer_init ()
 {
+	int i;
 	buffer *buf = malloc (sizeof(buffer));
 	buf->start = 0;
 	buf->end = 0;
 	buf->open = 0;
 	buf->offset = 0;
+	for (i=0; i<=MAX_BUFFER_SIZE; i++) {
+		buf->data[i].active = INACTIVE;
+	}
 	return buf;
 }
 
@@ -79,7 +83,7 @@ void buffer_clear (buffer * buf, int num)
 	int i, j;
 	i = (buf->start + num) % (MAX_BUFFER_SIZE+1);
 	for (j=0; j<num; j++) {
-		buf->data[(buf->start + num) % (MAX_BUFFER_SIZE+1)].active = INACTIVE;
+		buf->data[(buf->start + j) % (MAX_BUFFER_SIZE+1)].active = INACTIVE;
 	}
 	buf->start = i;
 	buf->offset += num;
@@ -103,7 +107,9 @@ void buffer_clear_all (buffer * buf, int num)
 
 /*  get: indexing function
  *   	RETURNS: pointer to elements at the given index in array
- *     	   NOTE: index is relative to the START position in the array */
+ *     	   NOTE: index is relative to the START position in the array 
+ * 
+ * 		TODO:  CHECK FOR ACTIVE DATA VALUE  */
 Value * buffer_get (buffer * buf, int index)
 {
 	return &(buf->data[(buf->start + index - buf->offset) % (MAX_BUFFER_SIZE + 1)]);
@@ -118,10 +124,18 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 	Value val;
 	int rel_index;
 	
+	/* Check for full buffer & return error */
 	if (buffer_isFull(buf)) {
+		printf("ERROR! Buffer is full\n");
 		return -1;
 	}
 	
+	/* Check for Index OOB & return error */
+	if (index > (buf->offset + MAX_BUFFER_SIZE)) {
+		printf("ERROR! Index out of bounds\n");
+		return -1;
+	}
+
 	val.lts = lts;
 	val.data = elm;
 	val.active = ACTIVE;
@@ -136,11 +150,21 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 		} while (buf->data[buf->open].active == ACTIVE);
 	}
 	if (rel_index == buf->end) {
-		buf->end += 1;
+		buf->end++;
 		if (buf->end > MAX_BUFFER_SIZE)
 			buf->end = 0;
 	}
-	return ((buf->open - buf->start) % ((MAX_BUFFER_SIZE+1) + buf->offset));
+	else {
+		if (index > (buf->end + buf->offset)){
+			buf->end = rel_index+1;
+		}
+	}
+	if (buf->open > buf->start) {
+		return (buf->open - buf->start + buf->offset);
+	}
+	else {
+		return (buf->open + MAX_BUFFER_SIZE + 1 - buf->start + buf->offset);
+	}
 }
 
 

@@ -51,7 +51,7 @@
 #define NAK_TRIGGER 32
 
 #define MAX_PACKET_SIZE 1212    /*  ?????? */
-#define MAX_BUFFER_SIZE 32
+#define MAX_BUFFER_SIZE 8
 
 /*  STATES  */
 #define IDLE 0
