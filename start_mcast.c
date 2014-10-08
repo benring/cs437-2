@@ -129,12 +129,9 @@ int main(int argc, char*argv[])
      *
      *------------------------------------------------------------------*/
 
-	test_msg.tag = 'A';
-	test_msg.pid = 12;
+	test_msg.tag = GO_MSG;
+	test_msg.pid = -1;
 	sendto(ss,(char *) &test_msg, sizeof(Message), 0,
 			       (struct sockaddr *)&send_addr, sizeof(send_addr));
-		
-	
-
 	return 0;
 }

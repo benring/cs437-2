@@ -47,11 +47,12 @@
 #define TIMEOUT_RECV 100000
 
 #define MAX_MACHINES 10
-#define STATUS_TRIGGER 8
+#define STATUS_TRIGGER 4
 #define NAK_TRIGGER 32
 
 #define MAX_PACKET_SIZE 1212    /*  ?????? */
 #define MAX_BUFFER_SIZE 8
+#define BATCH_SIZE 4
 
 /*  STATES  */
 #define IDLE 0

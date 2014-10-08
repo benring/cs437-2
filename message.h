@@ -18,9 +18,10 @@
 
 /*  MESSAGE TAGS  */
 #define DATA_MSG 'D'
-#define STATUS_MSG 'A'
-#define NAK_MSG 'H' 
+#define STATUS_MSG 'S'
+#define NAK_MSG 'N' 
 #define EOM_MSG 'E'
+#define GO_MSG 'G'
 
 
 /*  Basic Message Struct:  TAG, SOURCE, & PAYLOAD  */

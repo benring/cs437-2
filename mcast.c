@@ -43,7 +43,7 @@ int main(int argc, char*argv[])
 	Message         out_msg;
 	Message			*in_msg;
 	Message			test_msg;
-	Value			elm;
+	Value			*elm;
 
 	/* Process's Internal State */
 	int				me;
@@ -53,6 +53,7 @@ int main(int argc, char*argv[])
 	int				state;
 	int				status_count;
 	int				nak_count;
+	int				max_batch;
 
 	/*  Outgoing Message State (send)  */
 	int				msg_count;
@@ -63,15 +64,16 @@ int main(int argc, char*argv[])
 	/*  All Message State (receive)  */
 	buffer			message_buffer[MAX_MACHINES];
 	int				max_mid[MAX_MACHINES];
-	int				delivered;
+	int				max_lts[MAX_MACHINES];
+	int				deliver_lts;
 	
 	
 	/* All Processes States  */
 	int				mid[MAX_MACHINES];
 	
 	/*  File I/O vals  */
-	FILE            *dest;
-	char            *dest_file;
+	FILE            *sink;
+	char            dest_file[10];
 	unsigned int    file_size;
 	char            *c;
 
@@ -85,7 +87,9 @@ int main(int argc, char*argv[])
 	int				index;
 	int				min_lts;
 	int	i;
-
+	int				can_deliver;
+	int				cur_minlts;
+	int				cur_minpid;
 
 
 	/*------------------------------------------------------------
@@ -102,6 +106,8 @@ int main(int argc, char*argv[])
 		me = atoi(argv[1]);
 	}
 	num_packets = 20;
+	sprintf(dest_file, "%d.out", me);
+	num_machines = 3;
 	/*  Parse Command Line Args   
 	if (argc != 5) {
 		printf("usage: %s <num_of_packets> <machine_index> <num_of_machines> <loss_rate>\n", argv[0]);
@@ -120,12 +126,11 @@ int main(int argc, char*argv[])
    
 
 
-/*	printDB("\t Open output file");
-	if ((source = fopen(dest_file, "w")) == NULL)  {
+	printdb("\t Open output file");
+	if ((sink = fopen(dest_file, "w")) == NULL)  {
 		perror("ERROR opening destination file");
 		exit(0);
 	}
-*/
 	/* Open & Bind socket for receiving */
 	printdb("\t Open & Bind Receiving Socket\n");
 	sr = socket(AF_INET, SOCK_DGRAM, 0);
@@ -172,14 +177,15 @@ int main(int argc, char*argv[])
 
 	state = IDLE;
 	lts = -1;
+	deliver_lts = -1;
 	max_order_lts = 0;
 	msg_count = 0;
 	out_msg.pid = me;
-	delivered = 0;
 	
 	for (index=0; index < MAX_MACHINES; index++) {
 		mid[index] = 0;
 		max_mid[index] = -1;
+		max_lts[index] = -1;
 		max_ack[index] = -1;
 	}
 
@@ -189,58 +195,64 @@ int main(int argc, char*argv[])
      *
      *------------------------------------------------------------------*/
 
-	for(i=0; i<20; i++) {  
+	for(i=0; i<100; i++) {  
 		/*---------------------------------------------------------
 		 * (1)  Implement SEND Algorithm
 		 *--------------------------------------------------------*/
 
-		if (status_count >= STATUS_TRIGGER)  {
+		if (state != IDLE)  {
 			
-			status_count = 0;
-			out_msg.tag = STATUS_MSG;
-			for (index=-; index<MAX_MACHINES; index++) {
-				out_msg.payload[index] = max_mid[index];
+			if (status_count >= STATUS_TRIGGER)  {
+				
+				status_count = 0;
+				out_msg.tag = STATUS_MSG;
+				for (index=0; index<MAX_MACHINES; index++) {
+					out_msg.payload[index] = max_mid[index];
+				}
+				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
+					   (struct sockaddr *)&send_addr, sizeof(send_addr));
+			
 			}
-			/*  SEND STATUS MESSAGE  */
+			if (nak_count >= NAK_TRIGGER)  {
+				nak_count = 0;
+				out_msg.tag = NAK_MSG;
+				/* CHECK NAK HEURISTIC  */
+				/*  SEND NAK MESSAGE  */
+			}
 			
+			/*  Sending Algorithm:
+			 * 		1. Create New Packets (if possible)
+			 * 		2. Increment & Stamp LTS
+			 * 		3. Store Message in buffer
+			 * 		4. Send message
+			  */
+			out_msg.tag = DATA_MSG;
+			max_batch = msg_count + BATCH_SIZE;
+			while ((msg_count <= num_packets) &&
+					(!buffer_isFull(&message_buffer[me]))  &&
+					(msg_count <= max_batch)) { 
+				printdb("Sending DATA: LTS=%d\n", lts);
+				lts++;
+				out_msg.payload[0] = msg_count++;
+				out_msg.payload[1] = lts; 
+				out_msg.payload[2] = (lts+msg_count)*(me+2);
+			
+				max_mid[me]++;
+				max_lts[me] = lts;
+				buffer_append(&message_buffer[me], out_msg.payload[1], out_msg.payload[2]);
+				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
+					   (struct sockaddr *)&send_addr, sizeof(send_addr));
+			}
+			
+			/*  Send Lost messages  */
+	/*		while (!lost_msg_list.isEmpty())  {
+				out_msg = lost_msg_list.deq();
+				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
+					   (struct sockaddr *)&send_addr, sizeof(send_addr));
+			}
+	*/			
+		
 		}
-		
-		if (nak_count >= NAK_TRIGGER)  {
-			nak_count = 0;
-			out_msg.tag = NAK_MSG;
-			/* CHECK NAK HEURISTIC  */
-			/*  SEND NAK MESSAGE  */
-		}
-		
-		/*  Sending Algorithm:
-		 * 		1. Create New Packets (if possible)
-		 * 		2. Increment & Stamp LTS
-		 * 		3. Store Message in buffer
-		 * 		4. Send message
-		  */
-		out_msg.tag = DATA_MSG;
-		while ((msg_count <= num_packets) && (!buffer_isFull(&message_buffer[me]))) { 
-			printdb("Sending DATA: LTS=%d\n", lts);
-			lts++;
-			out_msg.payload[0] = msg_count++;
-			out_msg.payload[1] = lts; 
-			out_msg.payload[2] = (lts+msg_count)*(me+2);
-		
-		/*	buffer_append (message_buffer[me], lts, out_msg.payload[2]);   /***  TODO:  WHAT DO WE ACTUALLY STORE????  ***/
-			buffer_append(&message_buffer[me], out_msg.payload[1], out_msg.payload[2]);
-			sendto(ss,(char *) &out_msg, sizeof(Message), 0,
-			       (struct sockaddr *)&send_addr, sizeof(send_addr));
-		}
-		
-		/*  Send Lost messages  */
-/*		while (!lost_msg_list.isEmpty())  {
-			out_msg = lost_msg_list.deq();
-			sendto(ss,(char *) &out_msg, sizeof(Message), 0,
-			       (struct sockaddr *)&send_addr, sizeof(send_addr));
-		}
-*/			
-		
-	
 		/*---------------------------------------------------------
 		 * (2)  Prepare & Receive Data from receiving socket
 		 *--------------------------------------------------------*/
@@ -281,39 +293,87 @@ int main(int argc, char*argv[])
 		}
 
 		from_pid = in_msg->pid;
+		if (from_pid == me)  {
+			continue;
+		}
+		status_count++;
+		nak_count++;
 		
 		/*---------------------------------------------------------
 		 * (3)  Implement RECV Algorithm
 		 *--------------------------------------------------------*/
 		switch (in_msg->tag)  {
+			
+			case GO_MSG:
+				state = SEND;
+				break;
 		
 			case DATA_MSG:
 				/*  STORE DATA  & UPDATE MAX_MID RECV STATE */
-				printdb("Received DATA: LTS=%d,  VAL=%d\n", in_msg->payload[1], in_msg->payload[2]);
-				max_mid[from_pid] = buffer_put (&message_buffer[from_pid], 
-					in_msg->payload[1], in_msg->payload[2], in_msg->payload[0]);
+				printdb("Received DATA MSG:\tLTS=%d,  VAL=%d\n", in_msg->payload[1], in_msg->payload[2]);
+				if (in_msg->payload[1] > lts)  {
+					lts = in_msg->payload[1];
+				}
+				/*  SET: highest in-order message ID from the last sender, "OPEN-1" 
+				 /* DATA MESSAGE:
+					*  payload[0] = message ID (mid)
+					*  payload[1] = Lamport TimeStamp (LTS)
+					*  payload[2] = Data Value  */
+				max_mid[from_pid] = (buffer_put (&message_buffer[from_pid], in_msg->payload[1], in_msg->payload[2], in_msg->payload[0])) - 1;
+
+				/*  SET: track LTS associated with that message ID */
+				elm = buffer_get(&message_buffer[from_pid], max_mid[from_pid]);
+				max_lts[from_pid] = elm->lts;
 				break;
 			
 			
 			case STATUS_MSG:
+				printdb("Received STATUS MSG:\tFROM:%d\n", from_pid);
 				/*  Update SEND State  */
 				if (in_msg->payload[me] > max_ack[from_pid])  {
 					max_ack[from_pid] = in_msg->payload[me];
 				}
 				/*  CHECK LTS for message delivery  */
-				min_lts = delivered;
+				for (index = 0; index < num_machines; index++)  {
+					if (max_lts[index] > deliver_lts)  {
+						deliver_lts = max_lts[index];
+						printdb("NEW DELIVER LTS: %d\n", deliver_lts);
+					}
+				}
 
 /*** ======================>>>>>  TODO HERE <<<================================  ***/
 
-				can_deliver = TRUE;
-				while (can_deliver)  {
-					for (index=0; index <num_machines; index++)  {
-						
-						/*  DELIVERY ALGORITHM  */
-						
+				/*  DELIVERY ALGORITHM  */
+				if (deliver_lts >= 0)  {
+					while (TRUE)  {
+						cur_minlts = 10000000;
+						for (index=0; index <num_machines; index++)  {
+							if (max_lts[index] < 0)  {
+								continue;
+							}
+							if (buffer_isEmpty(&message_buffer[index]))  {
+								continue;
+							}
+							elm = buffer_get(&message_buffer[index], message_buffer[index].offset);
+							if ((elm->lts < cur_minlts) && (elm->lts >= 0) && (elm->active == ACTIVE)) {
+								cur_minlts = elm->lts;
+								cur_minpid = index;
+								/*printdb("WILL TRY TO DELIVER LTS: %d, PID: %d\n", cur_minlts, cur_minpid); */
+							}
+						}
+						if (cur_minlts <= deliver_lts)  {
+							printdb("DELIVERING:  LTS=%d,\tPID=%d\n", cur_minlts, cur_minpid);
+							/*  WRITE HERE  */
+							elm = buffer_get(&message_buffer[cur_minpid], message_buffer[cur_minpid].offset);
+							fprintf(sink, "LTS: %d\t, %2d, %8d, %8d\n", elm->lts, cur_minpid, message_buffer[cur_minpid].offset, elm->data);
+							buffer_clear(&message_buffer[cur_minpid], 1);
+							/*exit(0);*/
+						}
+						else  {
+							break;
+						}
 					}
 				}
-				
 				break;
 				
 			
@@ -332,5 +392,6 @@ int main(int argc, char*argv[])
 
 
 	} 
+	fclose(sink);
 	return 0;
 }
