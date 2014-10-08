@@ -13,6 +13,14 @@
  *   MAIN PROGRAM EXECUTION  
  ****************************************/
 
+printarray(int *v, int n)  {
+	int i;
+	for (i=0; i<n; i++)  {
+		printf("  %3d,", v[i]);
+	}
+	printf("\n");
+}
+
 int main(int argc, char*argv[])
 {
 
@@ -66,6 +74,7 @@ int main(int argc, char*argv[])
 	int				max_mid[MAX_MACHINES];
 	int				max_lts[MAX_MACHINES];
 	int				deliver_lts;
+	int				have_delivered;
 	
 	
 	/* All Processes States  */
@@ -178,6 +187,7 @@ int main(int argc, char*argv[])
 	state = IDLE;
 	lts = -1;
 	deliver_lts = -1;
+	have_delivered = -1;
 	max_order_lts = 0;
 	msg_count = 0;
 	out_msg.pid = me;
@@ -195,7 +205,7 @@ int main(int argc, char*argv[])
      *
      *------------------------------------------------------------------*/
 
-	for(i=0; i<100; i++) {  
+	for(i=0; i<200; i++) {  
 		/*---------------------------------------------------------
 		 * (1)  Implement SEND Algorithm
 		 *--------------------------------------------------------*/
@@ -324,6 +334,8 @@ int main(int argc, char*argv[])
 				/*  SET: track LTS associated with that message ID */
 				elm = buffer_get(&message_buffer[from_pid], max_mid[from_pid]);
 				max_lts[from_pid] = elm->lts;
+				printf(" MAX MID=");
+				printarray(max_mid, num_machines);
 				break;
 			
 			
@@ -334,8 +346,12 @@ int main(int argc, char*argv[])
 					max_ack[from_pid] = in_msg->payload[me];
 				}
 				/*  CHECK LTS for message delivery  */
+				printf(" MAX LTS=");
+				printarray(max_lts, num_machines);
+				
+				deliver_lts = 10000001;
 				for (index = 0; index < num_machines; index++)  {
-					if (max_lts[index] > deliver_lts)  {
+					if (max_lts[index] < deliver_lts)  {
 						deliver_lts = max_lts[index];
 						printdb("NEW DELIVER LTS: %d\n", deliver_lts);
 					}
@@ -355,6 +371,7 @@ int main(int argc, char*argv[])
 								continue;
 							}
 							elm = buffer_get(&message_buffer[index], message_buffer[index].offset);
+							
 							if ((elm->lts < cur_minlts) && (elm->lts >= 0) && (elm->active == ACTIVE)) {
 								cur_minlts = elm->lts;
 								cur_minpid = index;
