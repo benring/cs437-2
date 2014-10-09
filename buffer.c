@@ -1,5 +1,5 @@
 /******************************************************************************
- *  File:  buffer.c
+ *  File:  buffer.c - REF
  *
  *  Author: Benjamin Ring
  *  Date:   9 September 2014
@@ -74,7 +74,7 @@ int buffer_append (buffer * buf, int lts, int elm)
 
 
 /*  clear:  clears `num` elements from the start of the buffer
- *       NOTE: data is never actually "cleared" since the array is static,
+ *       NOTE: data is never actually "cleared" since the array is statiFc,
  *          but its slot(s) are made for available for access
  *           Also: this is safe to call on an empty list			
  * 		TODO: check for efficiency*/
@@ -122,7 +122,7 @@ Value * buffer_get (buffer * buf, int index)
 int buffer_put (buffer * buf, int lts, int elm, int index)
 {
 	Value val;
-	int rel_index;
+	int local_index;
 	
 	/* Check for full buffer & return error */
 	if (buffer_isFull(buf)) {
@@ -131,40 +131,74 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 	}
 	
 	/* Check for Index OOB & return error */
-	if (index > (buf->offset + MAX_BUFFER_SIZE)) {
+	if (index > (buf->offset + MAX_BUFFER_SIZE+1)) {
 		printf("ERROR! Index out of bounds\n");
 		return -1;
 	}
 
+	/*  Create the data element from input vals  */
 	val.lts = lts;
 	val.data = elm;
 	val.active = ACTIVE;
-	rel_index = (buf->start + (index - buf->offset)) % (MAX_BUFFER_SIZE + 1);
-	buf->data[rel_index] = val;
-	if (rel_index == buf->open)
+	
+	local_index = (buf->start + (index - buf->offset)) % (MAX_BUFFER_SIZE + 1);
+	buf->data[local_index] = val;
+	
+	/*  insert into current open slot */
+	if (local_index == buf->open)
 	{
+		/*  FIND next open slot  */
 		do  {
 			buf->open++;
 			if (buf->open > MAX_BUFFER_SIZE)
 				buf->open = 0;
 		} while (buf->data[buf->open].active == ACTIVE);
 	}
-	if (rel_index == buf->end) {
+	
+	/*  insert into end ( = append op) */
+	if (local_index == buf->end) {
 		buf->end++;
 		if (buf->end > MAX_BUFFER_SIZE)
 			buf->end = 0;
 	}
-	else {
-		if (index > (buf->end + buf->offset)){
-			buf->end = rel_index+1;
+	
+	/*  Otherwise:  Handle insertion based on where it's located relative to end position */
+	else if (  ((buf->start < buf->end) && ((local_index > buf->end) || (local_index < buf->start)))  ||
+			   ((buf->start > buf->end) &&  (local_index > buf->end) && (local_index < buf->start)) ) {
+		buf->end = local_index + 1;
+		if (buf->end > MAX_BUFFER_SIZE) {
+			buf->end = 0;
 		}
 	}
-	if (buf->open > buf->start) {
+	
+	/*  RETURN:  First "open" slot in the Buffer */
+	if (buf->open >= buf->start) {
 		return (buf->open - buf->start + buf->offset);
 	}
 	else {
 		return (buf->open + MAX_BUFFER_SIZE + 1 - buf->start + buf->offset);
 	}
+}
+
+
+int buffer_size(buffer * buf)  {
+	if (buf->end >= buf->start)  {
+		return (buf->end - buf->start);
+	}
+	else  {
+		return (buf->end - buf->start + MAX_BUFFER_SIZE + 1);
+	}
+}
+
+
+int buffer_end(buffer * buf)  {
+	if (buf->end >= buf->start)  {
+		return (buf->end + buf->offset - 1);
+	}
+	else  {
+		return (buf->end + MAX_BUFFER_SIZE + buf->offset);
+	}
+	
 }
 
 

@@ -1,5 +1,5 @@
 /******************************************************************************
- *  File: buffer.h
+ *  File: buffer.h  - REF
  * 
  *  Author: Benjamin Ring
  *  Date:   9 September 2014
@@ -76,5 +76,8 @@ Value * buffer_get (buffer * buf, int index);
  *      */
 int buffer_put (buffer * buf, int lts, int elm, int index);
 
+int buffer_size(buffer * buf);
+
+int buffer_end(buffer * buf);
 
 #endif

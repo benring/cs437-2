@@ -1,6 +1,6 @@
 CC=gcc
 
-CFLAGS = -ansi -c -Wall -pedantic -D_GNU_SOURCE -fdiagnostics-color=always
+CFLAGS = -ansi -c -g -Wall -pedantic -D_GNU_SOURCE -fdiagnostics-color=always
 
 all: mcast start_mcast
 
