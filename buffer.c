@@ -180,6 +180,28 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 	}
 }
 
+void buffer_print(buffer * buf) {
+  int i = buf->offset;
+  int j; 
+  for(i = 0; i < MAX_BUFFER_SIZE + 1; i++) {
+    printf("%3d", i + buf->offset); 
+  }
+  printf("\n");
+
+  j = buf->start;
+  for(i = 0; i < MAX_BUFFER_SIZE+1; i++) {
+    if (j > MAX_BUFFER_SIZE) {
+      j = 0;
+    }
+    if(buf->data[j].active == ACTIVE) {
+      printf("%3d", buf->data[j].lts);
+    }
+    else {
+      printf("%3c", 'x');
+    }
+    j++;
+  }
+  printf("\n");
 
 int buffer_size(buffer * buf)  {
 	if (buf->end >= buf->start)  {
@@ -201,4 +223,6 @@ int buffer_end(buffer * buf)  {
 	
 }
 
+
+}
 
