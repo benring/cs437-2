@@ -76,5 +76,7 @@ Value * buffer_get (buffer * buf, int index);
  *      */
 int buffer_put (buffer * buf, int lts, int elm, int index);
 
+/* print: print out elements in the buffer, for debugging. */
+void buffer_print(buffer * buf);
 
 #endif
