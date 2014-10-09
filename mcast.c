@@ -21,6 +21,48 @@ printarray(int *v, int n)  {
 	printf("\n");
 }
 
+void print_line() {
+  printdb("-----------------------\n");
+
+}
+void print_buffers(buffer *b, int num_machines) {
+  int i;
+  for(i=0; i < num_machines; i++) {
+    print_line();
+    printdb("P%d:\n", i);
+    buffer_print(&b[i]);
+    print_line();
+  }
+
+}
+
+int get_min(int * a, int num)  {
+	int i;
+	int min;
+	min = a[0];
+	for (i=1; i<num; i++) {
+		if (a[i] < min) 
+			min = a[i];
+	}
+	return min;
+}
+
+
+int get_min_exclude(int * a, int num, int exclude)  {
+	int i;
+	int min;
+	min = 1000000000;
+	for (i=0; i<num; i++) {
+		if (i == exclude)  {
+			continue;
+		}
+		if (a[i] < min) 
+			min = a[i];
+	}
+	return min;
+}
+
+
 int main(int argc, char*argv[])
 {
 
@@ -95,10 +137,13 @@ int main(int argc, char*argv[])
 	/*  Other vars	*/
 	int				index;
 	int				min_lts;
-	int	i;
+	int				loop, i;
 	int				can_deliver;
 	int				cur_minlts;
 	int				cur_minpid;
+	int				send_flag;
+	int				sequence_num;
+	int				send_window;
 
 
 	/*------------------------------------------------------------
@@ -114,7 +159,7 @@ int main(int argc, char*argv[])
 	else {
 		me = atoi(argv[1]);
 	}
-	num_packets = 20;
+	num_packets = NUM_PACKET_DEBUG;
 	sprintf(dest_file, "%d.out", me);
 	num_machines = 3;
 	/*  Parse Command Line Args   
@@ -197,6 +242,7 @@ int main(int argc, char*argv[])
 		max_mid[index] = -1;
 		max_lts[index] = -1;
 		max_ack[index] = -1;
+		message_buffer[index] = buffer_init();
 	}
 
     /*------------------------------------------------------------------
@@ -205,24 +251,36 @@ int main(int argc, char*argv[])
      *
      *------------------------------------------------------------------*/
 
-	for(i=0; i<200; i++) {  
+
+
+	printdb("\n\n\n-------------------------------------------------------------------------------------\n    MCAST: PID =  %d\n\n", me);
+
+	for(loop=0; loop<1000; loop++) {  
 		/*---------------------------------------------------------
 		 * (1)  Implement SEND Algorithm
 		 *--------------------------------------------------------*/
 
 		if (state != IDLE)  {
 			
+			/******************************************
+			 *   SEND STATUS Message
+			 *****************************************/
 			if (status_count >= STATUS_TRIGGER)  {
-				
 				status_count = 0;
 				out_msg.tag = STATUS_MSG;
 				for (index=0; index<MAX_MACHINES; index++) {
 					out_msg.payload[index] = max_mid[index];
 				}
+				printdb("SENDING STATUS Msg: Max-Mid= ");
+				printarray(max_mid, num_machines);
 				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 					   (struct sockaddr *)&send_addr, sizeof(send_addr));
 			
 			}
+
+			/******************************************
+			 *   SEND NAK Message
+			 *****************************************/
 			if (nak_count >= NAK_TRIGGER)  {
 				nak_count = 0;
 				out_msg.tag = NAK_MSG;
@@ -230,6 +288,10 @@ int main(int argc, char*argv[])
 				/*  SEND NAK MESSAGE  */
 			}
 			
+
+			/******************************************
+			 *   SEND DATA Message
+			 *****************************************/
 			/*  Sending Algorithm:
 			 * 		1. Create New Packets (if possible)
 			 * 		2. Increment & Stamp LTS
@@ -238,11 +300,28 @@ int main(int argc, char*argv[])
 			  */
 			out_msg.tag = DATA_MSG;
 			max_batch = msg_count + BATCH_SIZE;
-			while ((msg_count <= num_packets) &&
-					(!buffer_isFull(&message_buffer[me]))  &&
-					(msg_count <= max_batch)) { 
-				printdb("Sending DATA: LTS=%d\n", lts);
+			send_flag = FALSE;
+			
+				send_window = 100000000;
+				for (index=0; index<num_machines; index++)  {
+					if (max_mid[index] < send_window)  {
+						send_window = max_mid[index];
+					}
+				}
+
+			send_window += MAX_BUFFER_SIZE;
+			printdb("MAX SEND:  %d   \n MAX-MID= ", send_window);
+			printarray(max_mid, num_machines);
+			while ( (msg_count <= num_packets) &&
+					(msg_count < max_batch)  &&
+					(msg_count <= send_window) &&
+					(!buffer_isFull(&message_buffer[me])) ) {
+				send_flag = TRUE;
+				
 				lts++;
+
+				printdb("Sending DATA MSG #%d   (LTS=%d)\n", msg_count, lts);
+
 				out_msg.payload[0] = msg_count++;
 				out_msg.payload[1] = lts; 
 				out_msg.payload[2] = (lts+msg_count)*(me+2);
@@ -252,6 +331,11 @@ int main(int argc, char*argv[])
 				buffer_append(&message_buffer[me], out_msg.payload[1], out_msg.payload[2]);
 				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 					   (struct sockaddr *)&send_addr, sizeof(send_addr));
+			}
+
+			if (send_flag)  {
+				printdb("SEND SOME MESSAGES\n");
+				print_buffers(message_buffer, num_machines);
 			}
 			
 			/*  Send Lost messages  */
@@ -291,7 +375,7 @@ int main(int argc, char*argv[])
 			bytes = recvfrom(sr, mess_buf, sizeof(mess_buf), 0,
 			                  (struct sockaddr *)&from_addr, &from_len );
 			in_msg = (Message *) mess_buf;
-			printdb("received some data TAG=%c, FROM=%d\n", in_msg->tag, in_msg->pid);
+/*			printdb("received some data TAG=%c, FROM=%d\n", in_msg->tag, in_msg->pid);  */
 		} else {
 			status_count = STATUS_TRIGGER;  /*  Always send STATUS MSG on timeout -- ??? */
 			if (state == RECV)  {
@@ -314,13 +398,19 @@ int main(int argc, char*argv[])
 		 *--------------------------------------------------------*/
 		switch (in_msg->tag)  {
 			
+			/****************************************************
+			 *  RECEIVE the Start Signal to get out of IDLE State
+			 *****************************************************/
 			case GO_MSG:
 				state = SEND;
 				break;
 		
+			/****************************************************
+			 *  RECEIVE a DATA message
+			 *****************************************************/
 			case DATA_MSG:
 				/*  STORE DATA  & UPDATE MAX_MID RECV STATE */
-				printdb("Received DATA MSG:\tLTS=%d,  VAL=%d\n", in_msg->payload[1], in_msg->payload[2]);
+				printdb("Received DATA MSG from PID-%d, MID=%d, LTS=%d\n", from_pid, in_msg->payload[0], in_msg->payload[1]);
 				if (in_msg->payload[1] > lts)  {
 					lts = in_msg->payload[1];
 				}
@@ -329,18 +419,33 @@ int main(int argc, char*argv[])
 					*  payload[0] = message ID (mid)
 					*  payload[1] = Lamport TimeStamp (LTS)
 					*  payload[2] = Data Value  */
-				max_mid[from_pid] = (buffer_put (&message_buffer[from_pid], in_msg->payload[1], in_msg->payload[2], in_msg->payload[0])) - 1;
+					if (buffer_isActive(&message_buffer[from_pid], in_msg->payload[0])) {
+						printdb("  **Received DUPLICATE Packet.\n");
+					}
+					else if (buffer_isFull(&message_buffer[from_pid]))  {
+						printdb("******Ignoring Message due to full buffer on %d ******\n", from_pid);
+						exit(0);
+					}
+					else {
+					
+						/*  TODO:  CHECK INDEX OOB  */
+					sequence_num = (buffer_put (&message_buffer[from_pid], in_msg->payload[1], in_msg->payload[2], in_msg->payload[0])) - 1;
 
-				/*  SET: track LTS associated with that message ID */
-				elm = buffer_get(&message_buffer[from_pid], max_mid[from_pid]);
-				max_lts[from_pid] = elm->lts;
-				printf(" MAX MID=");
-				printarray(max_mid, num_machines);
+					/*  SET: track LTS associated with that message ID */
+					elm = buffer_get(&message_buffer[from_pid], sequence_num);
+					max_lts[from_pid] = elm->lts;
+					
+					print_buffers(message_buffer, num_machines);
+					}
+				
 				break;
 			
 			
+			/****************************************************
+			 *  RECEIVE a STATUS message
+			 *****************************************************/
 			case STATUS_MSG:
-				printdb("Received STATUS MSG:\tFROM:%d\n", from_pid);
+				printdb("Received STATUS MSG from PID-%d\n", from_pid);
 				/*  Update SEND State  */
 				if (in_msg->payload[me] > max_ack[from_pid])  {
 					max_ack[from_pid] = in_msg->payload[me];
@@ -353,13 +458,13 @@ int main(int argc, char*argv[])
 				for (index = 0; index < num_machines; index++)  {
 					if (max_lts[index] < deliver_lts)  {
 						deliver_lts = max_lts[index];
-						printdb("NEW DELIVER LTS: %d\n", deliver_lts);
+						printdb("Check DELIVER thru LTS: %d\n", deliver_lts);
 					}
 				}
 
-/*** ======================>>>>>  TODO HERE <<<================================  ***/
-
-				/*  DELIVERY ALGORITHM  */
+				/****************************************************
+				 *  DELIVERY ALGORITHM 
+				 *****************************************************/
 				if (deliver_lts >= 0)  {
 					while (TRUE)  {
 						cur_minlts = 10000000;
@@ -378,11 +483,19 @@ int main(int argc, char*argv[])
 								/*printdb("WILL TRY TO DELIVER LTS: %d, PID: %d\n", cur_minlts, cur_minpid); */
 							}
 						}
+						if ((cur_minpid == me) && (get_min_exclude(max_ack, num_machines, me) < message_buffer[me].offset)) {
+							break;
+						}
 						if (cur_minlts <= deliver_lts)  {
-							printdb("DELIVERING:  LTS=%d,\tPID=%d\n", cur_minlts, cur_minpid);
+							printdb("DELIVERING:  LTS=%d,PID=%d\n", cur_minlts, cur_minpid);
 							/*  WRITE HERE  */
 							elm = buffer_get(&message_buffer[cur_minpid], message_buffer[cur_minpid].offset);
 							fprintf(sink, "LTS: %d\t, %2d, %8d, %8d\n", elm->lts, cur_minpid, message_buffer[cur_minpid].offset, elm->data);
+	
+							/*  Set MAX_MID to what you are about to deliver  */
+							printdb("MaxMid Array = "); printarray(max_mid, num_machines);
+							max_mid[cur_minpid] = message_buffer[cur_minpid].offset;
+							printdb("MaxMid Array = "); printarray(max_mid, num_machines);
 							buffer_clear(&message_buffer[cur_minpid], 1);
 							/*exit(0);*/
 						}
@@ -390,6 +503,8 @@ int main(int argc, char*argv[])
 							break;
 						}
 					}
+					print_buffers(message_buffer, num_machines);
+					
 				}
 				break;
 				

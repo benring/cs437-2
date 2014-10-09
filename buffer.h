@@ -31,7 +31,7 @@ typedef struct buffer {
 
 
 /*  buffer_init:  creates & returns a pointer to a new, empty circular array  */
-buffer * buffer_init ();
+buffer buffer_init ();
 
 
 /*  isFull:  check if array is full
@@ -68,6 +68,8 @@ void buffer_clear_all (buffer * buf, int num);
  *     	RETURNS: pointer to elements at the given index in array 
  *    	   NOTE: index is relative to the START position in the array */
 Value * buffer_get (buffer * buf, int index);
+
+int buffer_isActive (buffer * buf, int index);
 
 
 /*  put:  inserts element at given index

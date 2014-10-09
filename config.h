@@ -37,6 +37,8 @@
 #define printdb(args...)
 #endif
 
+#define NUM_PACKET_DEBUG 50
+
 
 /*  COMMON DECLARATIONS   */
 #define TRUE 1
@@ -51,8 +53,8 @@
 #define NAK_TRIGGER 32
 
 #define MAX_PACKET_SIZE 1212    /*  ?????? */
-#define MAX_BUFFER_SIZE 8
-#define BATCH_SIZE 4
+#define MAX_BUFFER_SIZE 4
+#define BATCH_SIZE 2
 
 /*  STATES  */
 #define IDLE 0

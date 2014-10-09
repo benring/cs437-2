@@ -18,16 +18,16 @@
 
 
 /*  buffer_init:  creates & returns a pointer to a new, empty buffer  */
-buffer * buffer_init ()
+buffer buffer_init ()
 {
 	int i;
-	buffer *buf = malloc (sizeof(buffer));
-	buf->start = 0;
-	buf->end = 0;
-	buf->open = 0;
-	buf->offset = 0;
+	buffer buf;
+	buf.start = 0;
+	buf.end = 0;
+	buf.open = 0;
+	buf.offset = 0;
 	for (i=0; i<=MAX_BUFFER_SIZE; i++) {
-		buf->data[i].active = INACTIVE;
+		buf.data[i].active = INACTIVE;
 	}
 	return buf;
 }
@@ -115,6 +115,11 @@ Value * buffer_get (buffer * buf, int index)
 	return &(buf->data[(buf->start + index - buf->offset) % (MAX_BUFFER_SIZE + 1)]);
 }
 
+int buffer_isActive (buffer * buf, int index)  {
+	Value elm;
+	elm = buf->data[(buf->start + index - buf->offset) % (MAX_BUFFER_SIZE + 1)];
+	return (elm.active == ACTIVE);
+}
 
 
 
