@@ -121,6 +121,8 @@ int main(int argc, char*argv[])
 	
 	/* All Processes States  */
 	int				mid[MAX_MACHINES];
+	char			sending[MAX_MACHINES];   
+
 	
 	/*  File I/O vals  */
 	FILE            *sink;
@@ -144,6 +146,7 @@ int main(int argc, char*argv[])
 	int				send_flag;
 	int				sequence_num;
 	int				send_window;
+	int				all_inactive;
 
 
 	/*------------------------------------------------------------
@@ -243,8 +246,15 @@ int main(int argc, char*argv[])
 		max_lts[index] = -1;
 		max_ack[index] = -1;
 		message_buffer[index] = buffer_init();
+		sending[index] = UNKNOWN;
 	}
-
+	
+	if (num_packets > 0)  {
+		sending[me] = ACTIVE;
+	}
+	else  {
+		sending[me] = INACTIVE;
+	}
     /*------------------------------------------------------------------
      *
      *      MAIN ALGORITHM EXECUTION
@@ -266,6 +276,22 @@ int main(int argc, char*argv[])
 			 *   SEND STATUS Message
 			 *****************************************/
 			if (status_count >= STATUS_TRIGGER)  {
+
+				/* STATUS CHECK:  Has everyone completed sending messages  */
+				all_inactive = TRUE;
+				for (index=0; index<MAX_MACHINES; index++) {
+					if (sending[index] == ACTIVE)  {
+						all_inactive = FALSE;
+					}
+				}
+
+				/*  IF no one is sending anything, shut down  */
+				if (all_inactive)  {
+					printdb("ALL INACTIVE\n");
+					break;
+				}
+				
+				
 				status_count = 0;
 				out_msg.tag = STATUS_MSG;
 				for (index=0; index<MAX_MACHINES; index++) {
@@ -304,6 +330,9 @@ int main(int argc, char*argv[])
 			
 				send_window = 100000000;
 				for (index=0; index<num_machines; index++)  {
+					if ((index == me) && (max_mid[me] <0))  {
+						continue;
+					}
 					if (max_mid[index] < send_window)  {
 						send_window = max_mid[index];
 					}
@@ -450,21 +479,49 @@ int main(int argc, char*argv[])
 				if (in_msg->payload[me] > max_ack[from_pid])  {
 					max_ack[from_pid] = in_msg->payload[me];
 				}
+
+				/*  CHECK: Am I done sending Messages?  */
+				
+				printdb(" MAX ACK = ");
+				printarray(max_ack, num_machines);
+				if (get_min_exclude(max_ack, num_machines, me) == num_packets)  {
+					printdb("END OF MESSAGES  ------------- GOING INACTIVE\n");
+					sending[me] = INACTIVE;
+				}
+				
+				/*  CHECK: Is this process sending a message */
+				if (in_msg->payload[from_pid] >= 0) {
+					sending[from_pid] = ACTIVE;
+				}
+				else {
+					printdb("PROCESS %d HAS GONE INACTIVE\n");
+					sending[from_pid] = INACTIVE;
+				}
+				
+
+				
+				/****************************************************
+				 *  DELIVERY ALGORITHM 
+				 *****************************************************/
 				/*  CHECK LTS for message delivery  */
 				printf(" MAX LTS=");
 				printarray(max_lts, num_machines);
 				
 				deliver_lts = 10000001;
 				for (index = 0; index < num_machines; index++)  {
-					if (max_lts[index] < deliver_lts)  {
+					if (sending[index] == UNKNOWN)  {
+						printdb("UNKNOWN STATUS FROM pid-%d\n", index);
+						deliver_lts = -1;
+						break;
+					}
+					if ((max_lts[index] < deliver_lts) && (sending[index] == ACTIVE))  {
 						deliver_lts = max_lts[index];
-						printdb("Check DELIVER thru LTS: %d\n", deliver_lts);
+						printdb("Check DELIVER thru LTS: %d (this active pid=%d)\n", deliver_lts, index);
 					}
 				}
 
-				/****************************************************
-				 *  DELIVERY ALGORITHM 
-				 *****************************************************/
+
+
 				if (deliver_lts >= 0)  {
 					while (TRUE)  {
 						cur_minlts = 10000000;
@@ -497,6 +554,11 @@ int main(int argc, char*argv[])
 							max_mid[cur_minpid] = message_buffer[cur_minpid].offset;
 							printdb("MaxMid Array = "); printarray(max_mid, num_machines);
 							buffer_clear(&message_buffer[cur_minpid], 1);
+							
+							/*  If you have delivered your last message, reset your max-mid to -1  */
+							if ((cur_minpid == me) && (max_mid[me] == num_packets)) {
+								max_mid[me] = -1;
+							}
 							/*exit(0);*/
 						}
 						else  {

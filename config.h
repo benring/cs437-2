@@ -37,7 +37,7 @@
 #define printdb(args...)
 #endif
 
-#define NUM_PACKET_DEBUG 50
+#define NUM_PACKET_DEBUG 20
 
 
 /*  COMMON DECLARATIONS   */
@@ -45,6 +45,7 @@
 #define FALSE 0
 #define ACTIVE 'A'
 #define INACTIVE 'X'
+#define UNKNOWN 'U'
 #define TIMEOUT_IDLE 30
 #define TIMEOUT_RECV 100000
 
