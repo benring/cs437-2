@@ -5,8 +5,8 @@ CFLAGS = -ansi -c -g -Wall -pedantic -D_GNU_SOURCE -fdiagnostics-color=always
 all: mcast start_mcast
 
 
-mcast: mcast.o buffer.o
-	$(CC) -o mcast mcast.o buffer.o -O3
+mcast: mcast.o buffer.o recv_dbg.o linkedlist.o
+	$(CC) -o mcast mcast.o buffer.o recv_dbg.o linkedlist.o -O3
 
 
 start_mcast: start_mcast.o

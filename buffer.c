@@ -207,6 +207,7 @@ void buffer_print(buffer * buf) {
     j++;
   }
   printf("\n");
+}
 
 int buffer_size(buffer * buf)  {
 	if (buf->end >= buf->start)  {
@@ -229,5 +230,4 @@ int buffer_end(buffer * buf)  {
 }
 
 
-}
 
