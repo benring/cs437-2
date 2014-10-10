@@ -53,6 +53,8 @@
 #define MAX_MACHINES 10
 #define STATUS_TRIGGER 4
 #define NAK_TRIGGER 32
+#define NAK_QUOTA 10
+
 
 #define MAX_PACKET_SIZE 1212   
 #define MAX_BUFFER_SIZE 4

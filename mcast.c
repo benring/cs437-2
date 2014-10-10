@@ -5,15 +5,17 @@
  * Description:  The mutlicast process 
  *
  * *************************************************************************/
+#include "recv_dbg.h"
 #include "config.h"
 #include "message.h"
 #include "buffer.h"
+#include "linkedlist.h"
 
 /****************************************
  *   MAIN PROGRAM EXECUTION  
  ****************************************/
 
-printarray(int *v, int n)  {
+void printarray(int *v, int n)  {
 	int i;
 	for (i=0; i<n; i++)  {
 		printf("  %3d,", v[i]);
@@ -149,6 +151,7 @@ int main(int argc, char*argv[])
 	int				all_inactive;
 
 
+        linked_list *                   lost_packets;
 	/*------------------------------------------------------------
 	*    (1)  Conduct program Initialization
 	* --------------------------------------------------------------- */
@@ -164,7 +167,7 @@ int main(int argc, char*argv[])
 	}
 	num_packets = NUM_PACKET_DEBUG;
 	sprintf(dest_file, "%d.out", me);
-	num_machines = 3;
+	num_machines = 2;
 	/*  Parse Command Line Args   
 	if (argc != 5) {
 		printf("usage: %s <num_of_packets> <machine_index> <num_of_machines> <loss_rate>\n", argv[0]);
@@ -177,7 +180,7 @@ int main(int argc, char*argv[])
 	loss_rate = atoi(argv[4]);
 	 */
 	
-	/*   recv_dbg_init(loss_rate, me);  */
+	recv_dbg_init(0, me);  
 
 	/* Open output file */
    
@@ -311,7 +314,22 @@ int main(int argc, char*argv[])
 			if (nak_count >= NAK_TRIGGER)  {
 				nak_count = 0;
 				out_msg.tag = NAK_MSG;
-				/* CHECK NAK HEURISTIC  */
+
+
+                                printdb("SENDING NAK!\n"); 
+                                for(index = 0; index < num_machines; index++) {
+                                  if (index == me) {
+                                    continue;
+                                  }
+                                  out_msg.payload[index*NAK_QUOTA] = 1;
+                                  out_msg.payload[index*NAK_QUOTA+1] = message_buffer[index].offset;
+                                  printf("NAK for pid %d, SN %d\n", index, message_buffer[index].offset);
+ 
+                                }
+				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
+					   (struct sockaddr *)&send_addr, sizeof(send_addr));
+                                
+                                /* CHECK NAK HEURISTIC  */
 				/*  SEND NAK MESSAGE  */
 			}
 			
@@ -367,7 +385,24 @@ int main(int argc, char*argv[])
 				printdb("SEND SOME MESSAGES\n");
 				print_buffers(message_buffer, num_machines);
 			}
-			
+		
+                         
+                        while(!isEmpty(lost_packets)) {
+                          int num;
+                          num = deq(&lost_packets);
+                          if ((num >= message_buffer[me].offset) && (num < buffer_end(&message_buffer[me])) ) {
+                            printf("Resending packet %d\n", num);
+                            out_msg.tag = DATA_MSG;
+                            out_msg.payload[0] = num;
+                            elm = buffer_get(&message_buffer[me], num);
+                            out_msg.payload[1] = elm->lts;
+                            out_msg.payload[2] = elm->data;
+
+				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
+					   (struct sockaddr *)&send_addr, sizeof(send_addr));
+                          }
+                        }
+
 			/*  Send Lost messages  */
 	/*		while (!lost_msg_list.isEmpty())  {
 				out_msg = lost_msg_list.deq();
@@ -402,8 +437,12 @@ int main(int argc, char*argv[])
 			from_len = sizeof(from_addr);
 
 			/*** TODO:  change to recv_dbg()  ***/
-			bytes = recvfrom(sr, mess_buf, sizeof(mess_buf), 0,
-			                  (struct sockaddr *)&from_addr, &from_len );
+			bytes = recv_dbg(sr, mess_buf, sizeof(mess_buf), 0);
+			if (bytes == 0) {
+			  printdb("DROPPED A PACKET\n");
+			  continue;
+
+                        }
 			in_msg = (Message *) mess_buf;
 /*			printdb("received some data TAG=%c, FROM=%d\n", in_msg->tag, in_msg->pid);  */
 		} else {
@@ -441,6 +480,7 @@ int main(int argc, char*argv[])
 			case DATA_MSG:
 				/*  STORE DATA  & UPDATE MAX_MID RECV STATE */
 				printdb("Received DATA MSG from PID-%d, MID=%d, LTS=%d\n", from_pid, in_msg->payload[0], in_msg->payload[1]);
+				print_buffers(message_buffer, num_machines);
 				if (in_msg->payload[1] > lts)  {
 					lts = in_msg->payload[1];
 				}
@@ -452,10 +492,13 @@ int main(int argc, char*argv[])
 					if (buffer_isActive(&message_buffer[from_pid], in_msg->payload[0])) {
 						printdb("  **Received DUPLICATE Packet.\n");
 					}
+                                        else if (in_msg->payload[0] < message_buffer[from_pid].offset) {
+                                            printdb("RECEIVED AN OLD PACKET\n");
+                                        }
 					else if (buffer_isFull(&message_buffer[from_pid]))  {
 						printdb("******Ignoring Message due to full buffer on %d ******\n", from_pid);
 						exit(0);
-					}
+					} 
 					else {
 					
 						/*  TODO:  CHECK INDEX OOB  */
@@ -574,6 +617,12 @@ int main(int argc, char*argv[])
 			
 			case NAK_MSG:
 				/*  Update LOST msg queue  */
+				printdb("RECEIVED A NAK from pid %d\n", in_msg->pid);
+				int num;
+				num = in_msg->payload[me*NAK_QUOTA];
+				printdb("I need to resend %d packets \n", num);
+				printdb("First one is: %d\n", in_msg->payload[me*NAK_QUOTA+1]);
+				enq(&lost_packets, in_msg->payload[me*NAK_QUOTA+1]);
 				break;
 				
 			
