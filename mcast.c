@@ -287,7 +287,8 @@ int main(int argc, char*argv[])
 
 				/*  IF no one is sending anything, shut down  */
 				if (all_inactive)  {
-					printdb("ALL INACTIVE\n");
+					printdb("ALL INACTIVE -- GOING TO KILL STATE\n");
+					state = KILL;
 					break;
 				}
 				
@@ -576,16 +577,34 @@ int main(int argc, char*argv[])
 				break;
 				
 			
-			case EOM_MSG:
-				/*  Process EOM Message  */
+			case KILL_MSG:
+				state = KILL;
 				break;
 				
 			default:
 				printdb("Process Received erroneous message");
 		}
 
+		if (state == KILL)  {
+			break;
+		}
 
 	} 
 	fclose(sink);
+	
+	if (state != KILL)  {
+		printdb("Program ended prematurely\n");
+		return(1);
+	}
+	else {
+		out_msg.tag = KILL_MSG;
+		for (index = 0; index < num_machines; index++)  {
+			printdb("SEND: KILL Code #%d\n", index);
+			sendto(ss,(char *) &out_msg, sizeof(Message), 0,
+			   (struct sockaddr *)&send_addr, sizeof(send_addr));
+					   
+		}
+		printdb("\n Terminating.\n-------------------------------\n\n");
+	}
 	return 0;
 }

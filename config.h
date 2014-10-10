@@ -46,6 +46,7 @@
 #define ACTIVE 'A'
 #define INACTIVE 'X'
 #define UNKNOWN 'U'
+
 #define TIMEOUT_IDLE 30
 #define TIMEOUT_RECV 100000
 
@@ -53,7 +54,7 @@
 #define STATUS_TRIGGER 4
 #define NAK_TRIGGER 32
 
-#define MAX_PACKET_SIZE 1212    /*  ?????? */
+#define MAX_PACKET_SIZE 1212   
 #define MAX_BUFFER_SIZE 4
 #define BATCH_SIZE 2
 
@@ -61,6 +62,7 @@
 #define IDLE 0
 #define SEND 1
 #define RECV 2
+#define KILL 3
 
 #endif
 

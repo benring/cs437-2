@@ -22,7 +22,7 @@
 #define NAK_MSG 'N' 
 #define EOM_MSG 'E'
 #define GO_MSG 'G'
-
+#define KILL_MSG 'K'
 
 /*  Basic Message Struct:  TAG, SOURCE, & PAYLOAD  */
 typedef struct Message {
