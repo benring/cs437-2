@@ -701,12 +701,12 @@ int main(int argc, char*argv[])
 						deliver_lts = -1;
 						break;
 					}
-/*					if ((sending[index] == ACTIVE) && (max_mid[index] <= 0))  {
+					if ((sending[index] == ACTIVE) && (max_lts[index] < 0))  {
 						printdb("DETECTED ACTIVE STATE, but have not received any data yet from pid %d\n", index);
 						deliver_lts = -1;
 						break;
 					}
-*/					if ((max_lts[index] < deliver_lts) && (max_lts[index] >= 0))  {
+					if ((max_lts[index] < deliver_lts) && (max_lts[index] >= 0))  {
 						deliver_lts = max_lts[index];
 						printdb("Check DELIVER thru LTS: %d (this active pid=%d)\n", deliver_lts, index);
 					}

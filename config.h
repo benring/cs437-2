@@ -54,8 +54,8 @@
 #define TIMEOUT_RECV 50000
 
 #define MAX_MACHINES 10
-#define STATUS_TRIGGER 16
-#define NAK_TRIGGER 64
+#define STATUS_TRIGGER 12
+#define NAK_TRIGGER 32
 #define NAK_QUOTA 20
 
 
