@@ -37,7 +37,7 @@
 #define printdb(args...)
 #endif
 
-#define NUM_PACKET_DEBUG 20
+#define NUM_PACKET_DEBUG 50
 
 
 /*  COMMON DECLARATIONS   */
@@ -57,7 +57,7 @@
 
 
 #define MAX_PACKET_SIZE 1212   
-#define MAX_BUFFER_SIZE 4
+#define MAX_BUFFER_SIZE 16
 #define BATCH_SIZE 2
 
 /*  STATES  */

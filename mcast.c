@@ -105,6 +105,8 @@ int main(int argc, char*argv[])
 	int				state;
 	int				status_count;
 	int				nak_count;
+	int				last_nak;
+	int				this_nak;
 	int				max_batch;
 
 	/*  Outgoing Message State (send)  */
@@ -242,6 +244,7 @@ int main(int argc, char*argv[])
 	max_order_lts = 0;
 	msg_count = 0;
 	out_msg.pid = me;
+	last_nak = 0;
 	
 	for (index=0; index < MAX_MACHINES; index++) {
 		mid[index] = 0;
@@ -324,9 +327,19 @@ int main(int argc, char*argv[])
 				  }
 					printdb(" / PID-%d [", index);
 					j = 1;
-					
-					printdb("A%d=%d,", message_buffer[index].upperlimit, buffer_first_open(&message_buffer[index]));
-					if (message_buffer[index].upperlimit > buffer_first_open(&message_buffer[index])+1) {
+					this_nak = buffer_first_open(&message_buffer[index]);
+					if (this_nak == last_nak) {
+						nak_count++;
+						out_msg.payload[index * NAK_QUOTA]++;
+						out_msg.payload[(index * NAK_QUOTA) + j] = i;
+						printdb(" Msg#%d, ", i);
+						j++;
+					}
+					else {
+						last_nak = this_nak;
+					}
+					printdb("A%d=%d,", message_buffer[index].upperlimit, this_nak);
+					if (message_buffer[index].upperlimit > buffer_first_open(&message_buffer[index])) {
 						for (i=message_buffer[index].offset; i <= message_buffer[index].upperlimit; i++) {
 						printdb("B");
 							/*elm = buffer_get(&message_buffer[index], i);*/
