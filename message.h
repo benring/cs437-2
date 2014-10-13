@@ -33,7 +33,7 @@ typedef struct Message {
 
 
 typedef struct Value {
-	char active;
+	int active;
 	int lts;
 	int data;
 } Value;
@@ -47,6 +47,7 @@ typedef struct Value {
  * STATUS MESSAGE:
  *  payload[0:MAX_MACHINES-1] = mid
  *  payload[MAX_MACHINES] = Message ID of last packet (if already sent); otherwise -1
+ *  payload[MAX_MACHINES+1:MAX_MACHINES*2] = status
  * 
  * NAK MESSAGE:
  *  payload[0] = # lost msgs for PID 0

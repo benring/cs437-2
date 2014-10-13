@@ -122,7 +122,7 @@ void buffer_clear_all (buffer * buf, int num)
 Value * buffer_get (buffer * buf, int index)
 {
 	if (index > buf->upperlimit)  {
-		printf("ERROR! Index out of bounds on get %d", index);
+		printdb("ERROR! Index out of bounds on get %d", index);
 		return 0;
 	}
 	return &(buf->data[(buf->start + index - buf->offset) % (MAX_BUFFER_SIZE + 1)]);
@@ -147,7 +147,7 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 	
 	/* Check for Index OOB & return error */
 	if (index > (buf->offset + MAX_BUFFER_SIZE+1)) {
-		printf("ERROR! Index out of bounds\n");
+		printdb("ERROR! Index out of bounds\n");
 		return -1;
 	}
 
@@ -181,13 +181,6 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 			buf->end = 0;
 		}
 	}
-/*	if (local_index == buf->end) {
-		buf->end++;
-		buf->upperlimit++;
-		if (buf->end > MAX_BUFFER_SIZE)
-			buf->end = 0;
-	}
-*/	
 	/*  RETURN:  First "open" slot in the Buffer */
 	if (buf->open >= buf->start) {
 		return (buf->open - buf->start + buf->offset);
@@ -201,9 +194,9 @@ void buffer_print(buffer * buf) {
   int i = buf->offset;
   int j; 
   for(i = 0; i < MAX_BUFFER_SIZE + 1; i++) {
-    printf("%3d", i + buf->offset); 
+    printdb("%5d", i + buf->offset); 
   }
-  printf("\n");
+  printdb("\n");
 
   j = buf->start;
   for(i = 0; i < MAX_BUFFER_SIZE+1; i++) {
@@ -211,37 +204,23 @@ void buffer_print(buffer * buf) {
       j = 0;
     }
     if(buf->data[j].active == ACTIVE) {
-      printf("%3d", buf->data[j].lts);
+      printdb("%5d", buf->data[j].lts);
     }
     else {
-      printf("%3c", 'x');
+      printdb("%5c", 'x');
     }
     j++;
   }
-  printf("\n");
+  printdb("\n");
 }
 
 int buffer_size(buffer * buf)  {
 	return (buf->size);
-/*	if (buf->end >= buf->start)  {
-		return (buf->end - buf->start);
-	}
-	else  {
-		return (buf->end - buf->start + MAX_BUFFER_SIZE + 1);
-	}
-*/}
+}
 
 
 int buffer_end(buffer * buf)  {
 	return buf->upperlimit;
-/*	printf("START=%d,  END=%d  OPEN=%d\n", buf->start, buf->end, buf->open);
-	if (buf->end >= buf->start)  {
-		return (buf->end + buf->offset - 1);
-	}
-	else  {
-		return (buf->end + MAX_BUFFER_SIZE + buf->offset);
-	}
-*/	
 }
 
 int buffer_first_open(buffer * buf) {

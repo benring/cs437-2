@@ -37,28 +37,30 @@
 #define printdb(args...)
 #endif
 
-#define NUM_PACKET_DEBUG 500
+#define NUM_PACKET_DEBUG 5000
 
 
 /*  COMMON DECLARATIONS   */
 #define TRUE 1
 #define FALSE 0
-#define ACTIVE 'A'
-#define INACTIVE 'X'
-#define UNKNOWN 'U'
-#define COMPLETING 'C'
+#define UNKNOWN 0
+#define INACTIVE 1
+#define ACTIVE 2
+#define DONE_DELIVERING 3
+#define DONE_SENDING 4
+#define COMPLETING 5
 
 #define TIMEOUT_IDLE 30
-#define TIMEOUT_RECV 100000
+#define TIMEOUT_RECV 50000
 
 #define MAX_MACHINES 10
-#define STATUS_TRIGGER 4
-#define NAK_TRIGGER 32
-#define NAK_QUOTA 10
+#define STATUS_TRIGGER 16
+#define NAK_TRIGGER 64
+#define NAK_QUOTA 20
 
 
 #define MAX_PACKET_SIZE 1212   
-#define MAX_BUFFER_SIZE 16
+#define MAX_BUFFER_SIZE 64
 #define BATCH_SIZE 2
 
 /*  STATES  */
