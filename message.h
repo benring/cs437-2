@@ -49,9 +49,9 @@ typedef struct Value {
  * 
  * NAK MESSAGE:
  *  payload[0] = # lost msgs for PID 0
- *  payload[1..29] = lost messages, PID 0
- *  payload[30] = pid1
- *  payload[60] = pid2
+ *  payload[1..9] = lost messages, PID 0
+ *  payload[10] = pid1
+ *  payload[20] = pid2
  *  etc.....
 */
 

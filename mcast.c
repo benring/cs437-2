@@ -76,7 +76,7 @@ int main(int argc, char*argv[])
 	struct sockaddr_in    recv_addr;
 	struct sockaddr_in    send_addr;
 	struct sockaddr_in    from_addr;
-	socklen_t             from_len;
+/*	socklen_t             from_len;  */
 	int                   mcast_addr;
 	int					  port; 
 	struct ip_mreq			mreq;
@@ -141,7 +141,7 @@ int main(int argc, char*argv[])
 	/*  Other vars	*/
 	int				index;
 	int				min_lts;
-	int				loop, i;
+	int				loop, i, j;
 	int				can_deliver;
 	int				cur_minlts;
 	int				cur_minpid;
@@ -167,7 +167,7 @@ int main(int argc, char*argv[])
 	}
 	num_packets = NUM_PACKET_DEBUG;
 	sprintf(dest_file, "%d.out", me);
-	num_machines = 2;
+	num_machines = 3;
 	/*  Parse Command Line Args   
 	if (argc != 5) {
 		printf("usage: %s <num_of_packets> <machine_index> <num_of_machines> <loss_rate>\n", argv[0]);
@@ -180,7 +180,7 @@ int main(int argc, char*argv[])
 	loss_rate = atoi(argv[4]);
 	 */
 	
-	recv_dbg_init(0, me);  
+	recv_dbg_init(5, me);  
 
 	/* Open output file */
    
@@ -312,25 +312,50 @@ int main(int argc, char*argv[])
 			 *   SEND NAK Message
 			 *****************************************/
 			if (nak_count >= NAK_TRIGGER)  {
+				printdb("NAK TRIGGERED!  BUILD NAK: ");
 				nak_count = 0;
 				out_msg.tag = NAK_MSG;
+				
+				/* CHECK NAK HEURISTIC  */
+				for(index = 0; index < num_machines; index++) {
+				  out_msg.payload[index*NAK_QUOTA] = 0;
+				  if (index == me) {
+						continue;
+				  }
+					printdb(" / PID-%d [", index);
+					j = 1;
+					
+					printdb("A%d=%d,", message_buffer[index].upperlimit, buffer_first_open(&message_buffer[index]));
+					if (message_buffer[index].upperlimit > buffer_first_open(&message_buffer[index])+1) {
+						for (i=message_buffer[index].offset; i <= message_buffer[index].upperlimit; i++) {
+						printdb("B");
+							/*elm = buffer_get(&message_buffer[index], i);*/
+							if (!buffer_isActive(&message_buffer[index], i)) {
+								nak_count++;
+								out_msg.payload[index * NAK_QUOTA]++;
+								out_msg.payload[(index * NAK_QUOTA) + j] = i;
+								printdb(" Msg#%d, ", i);
+								j++;
+								if (j == NAK_QUOTA)  {
+									break;
+								}
+							}
+						}
+					}
+					printdb("]");
 
-
-                                printdb("SENDING NAK!\n"); 
-                                for(index = 0; index < num_machines; index++) {
-                                  if (index == me) {
-                                    continue;
-                                  }
-                                  out_msg.payload[index*NAK_QUOTA] = 1;
-                                  out_msg.payload[index*NAK_QUOTA+1] = message_buffer[index].offset;
-                                  printf("NAK for pid %d, SN %d\n", index, message_buffer[index].offset);
- 
-                                }
-				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
-					   (struct sockaddr *)&send_addr, sizeof(send_addr));
-                                
-                                /* CHECK NAK HEURISTIC  */
+/*				  out_msg.payload[index*NAK_QUOTA+1] = message_buffer[index].offset;  
+				  printf("NAK for pid %d, SN %d\n", index, message_buffer[index].offset);
+*/
+				}
+				printdb("\n");
 				/*  SEND NAK MESSAGE  */
+				if (nak_count > 0)  {
+					printdb("SENDING NAK for %d lost messages!\n", nak_count); 
+					sendto(ss,(char *) &out_msg, sizeof(Message), 0,
+					   (struct sockaddr *)&send_addr, sizeof(send_addr));
+				}
+				nak_count = 0;
 			}
 			
 
@@ -370,6 +395,10 @@ int main(int argc, char*argv[])
 
 				printdb("Sending DATA MSG #%d   (LTS=%d)\n", msg_count, lts);
 
+				 /* DATA MESSAGE:
+					*  payload[0] = message ID (mid)
+					*  payload[1] = Lamport TimeStamp (LTS)
+					*  payload[2] = Data Value  */
 				out_msg.payload[0] = msg_count++;
 				out_msg.payload[1] = lts; 
 				out_msg.payload[2] = (lts+msg_count)*(me+2);
@@ -379,37 +408,36 @@ int main(int argc, char*argv[])
 				buffer_append(&message_buffer[me], out_msg.payload[1], out_msg.payload[2]);
 				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 					   (struct sockaddr *)&send_addr, sizeof(send_addr));
+				have_delivered++;
 			}
 
-			if (send_flag)  {
+/*			if (send_flag)  {
 				printdb("SEND SOME MESSAGES\n");
 				print_buffers(message_buffer, num_machines);
 			}
-		
-                         
-                        while(!isEmpty(lost_packets)) {
-                          int num;
-                          num = deq(&lost_packets);
-                          if ((num >= message_buffer[me].offset) && (num < buffer_end(&message_buffer[me])) ) {
-                            printf("Resending packet %d\n", num);
-                            out_msg.tag = DATA_MSG;
-                            out_msg.payload[0] = num;
-                            elm = buffer_get(&message_buffer[me], num);
-                            out_msg.payload[1] = elm->lts;
-                            out_msg.payload[2] = elm->data;
+*/		
 
+			/******************************************
+			 *   RE-SEND Lost Data Message(s)
+			 *****************************************/
+			while(!isEmpty(lost_packets)) {
+			  index = deq(&lost_packets);
+			  printdb("NEED to RE-SEND %d: ", index);
+			  /* Ensure packet is is my window  */
+			  if ((index >= message_buffer[me].offset) && (index < buffer_end(&message_buffer[me])) ) {
+				printf("Resending packet %d\n", index);
+				out_msg.tag = DATA_MSG;
+				elm = buffer_get(&message_buffer[me], index);
+				out_msg.payload[0] = index;
+				out_msg.payload[1] = elm->lts;
+				out_msg.payload[2] = elm->data;
+				printdb("Re-Sending DATA MSG #%d   (LTS=%d)\n", index, elm->lts);
 				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 					   (struct sockaddr *)&send_addr, sizeof(send_addr));
-                          }
-                        }
+				}
+            }
+			printdb("\n");
 
-			/*  Send Lost messages  */
-	/*		while (!lost_msg_list.isEmpty())  {
-				out_msg = lost_msg_list.deq();
-				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
-					   (struct sockaddr *)&send_addr, sizeof(send_addr));
-			}
-	*/			
 		
 		}
 		/*---------------------------------------------------------
@@ -434,25 +462,23 @@ int main(int argc, char*argv[])
 		/*  Receive Data  */
 		sock_num = select(FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
 		if (sock_num > 0 && FD_ISSET(sr, &temp_mask)) {
-			from_len = sizeof(from_addr);
-
-			/*** TODO:  change to recv_dbg()  ***/
-			bytes = recv_dbg(sr, mess_buf, sizeof(mess_buf), 0);
+/*			from_len = sizeof(from_addr);  */
+			bytes = (state == IDLE) ?
+				recv(sr, mess_buf, sizeof(mess_buf), 0) :
+				recv_dbg(sr, mess_buf, sizeof(mess_buf), 0);
 			if (bytes == 0) {
 			  printdb("DROPPED A PACKET\n");
 			  continue;
-
-                        }
+			}
 			in_msg = (Message *) mess_buf;
-/*			printdb("received some data TAG=%c, FROM=%d\n", in_msg->tag, in_msg->pid);  */
 		} else {
 			status_count = STATUS_TRIGGER;  /*  Always send STATUS MSG on timeout -- ??? */
+			nak_count = NAK_TRIGGER;
 			if (state == RECV)  {
-				nak_count++;			/** TODO:  Determine NAK Handling  **/
 				state == SEND;			
 			}
 			printdb("timed_out when trying to receive\n");
-/*			continue;  */
+			continue;
 		}
 
 		from_pid = in_msg->pid;
@@ -489,26 +515,33 @@ int main(int argc, char*argv[])
 					*  payload[0] = message ID (mid)
 					*  payload[1] = Lamport TimeStamp (LTS)
 					*  payload[2] = Data Value  */
+
+					/*  CHECK: Duplicate packet  */
 					if (buffer_isActive(&message_buffer[from_pid], in_msg->payload[0])) {
 						printdb("  **Received DUPLICATE Packet.\n");
 					}
-                                        else if (in_msg->payload[0] < message_buffer[from_pid].offset) {
-                                            printdb("RECEIVED AN OLD PACKET\n");
-                                        }
+					/*  CHECK: Old Packet */
+					else if (in_msg->payload[0] < message_buffer[from_pid].offset) {
+						printdb("RECEIVED AN OLD PACKET\n");
+					}
+					/*  CHECK: INDEX OOB  -- TODO:  Handle this better*/
+					else if (in_msg->payload[0] > (message_buffer[from_pid].offset + MAX_BUFFER_SIZE)) {
+						printdb("******Ignoring Message due to lack of buffer size on %d ******\n", from_pid);
+					}
+					/*  CHECK:  Buffer Overflow  */
 					else if (buffer_isFull(&message_buffer[from_pid]))  {
-						printdb("******Ignoring Message due to full buffer on %d ******\n", from_pid);
-						exit(0);
+						printdb("******Ignoring Message to due to Buffer Overflow on %d ******\n", from_pid);
+						/*exit(0);*/
 					} 
 					else {
 					
-						/*  TODO:  CHECK INDEX OOB  */
-					sequence_num = (buffer_put (&message_buffer[from_pid], in_msg->payload[1], in_msg->payload[2], in_msg->payload[0])) - 1;
+						sequence_num = (buffer_put (&message_buffer[from_pid], in_msg->payload[1], in_msg->payload[2], in_msg->payload[0])) - 1;
 
-					/*  SET: track LTS associated with that message ID */
-					elm = buffer_get(&message_buffer[from_pid], sequence_num);
-					max_lts[from_pid] = elm->lts;
-					
-					print_buffers(message_buffer, num_machines);
+						/*  SET: track LTS associated with that message ID */
+						elm = buffer_get(&message_buffer[from_pid], sequence_num);
+						max_lts[from_pid] = elm->lts;
+						
+						print_buffers(message_buffer, num_machines);
 					}
 				
 				break;
@@ -615,15 +648,34 @@ int main(int argc, char*argv[])
 				break;
 				
 			
+			/****************************************************
+			 *  RECEIVE a NAK message
+			 *****************************************************/
 			case NAK_MSG:
 				/*  Update LOST msg queue  */
-				printdb("RECEIVED A NAK from pid %d\n", in_msg->pid);
-				int num;
-				num = in_msg->payload[me*NAK_QUOTA];
+				printdb("------Received NAK from %d for: ", from_pid);
+				
+				index = me*NAK_QUOTA;
+				i = 1;
+				while (i <= in_msg->payload[index])  {
+					j = in_msg->payload[index + i];
+					i++;
+					printdb(" Msg#%d", j);
+					if (j >= have_delivered) {
+						printdb("<Ignore%d >= %d>", j, buffer_end(&message_buffer[me]));
+					}
+					else {
+						printdb("<Enq>");
+						enq(&lost_packets, j);
+					}
+				}
+				printdb("\n");
+
+/*				num = in_msg->payload[me*NAK_QUOTA];
 				printdb("I need to resend %d packets \n", num);
 				printdb("First one is: %d\n", in_msg->payload[me*NAK_QUOTA+1]);
 				enq(&lost_packets, in_msg->payload[me*NAK_QUOTA+1]);
-				break;
+*/				break;
 				
 			
 			case KILL_MSG:

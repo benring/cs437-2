@@ -26,6 +26,8 @@ typedef struct buffer {
    int end;
    int open;
    int offset;
+   int size;
+   int upperlimit;
    Value data[MAX_BUFFER_SIZE+1];
 } buffer;
 
@@ -83,5 +85,7 @@ int buffer_size(buffer * buf);
 int buffer_end(buffer * buf);
 /* print: print out elements in the buffer, for debugging. */
 void buffer_print(buffer * buf);
+
+int buffer_first_open(buffer * buf);
 
 #endif

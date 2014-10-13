@@ -26,6 +26,8 @@ buffer buffer_init ()
 	buf.end = 0;
 	buf.open = 0;
 	buf.offset = 0;
+	buf.upperlimit = 0;
+	buf.size = 0;
 	for (i=0; i<=MAX_BUFFER_SIZE; i++) {
 		buf.data[i].active = INACTIVE;
 	}
@@ -36,14 +38,16 @@ buffer buffer_init ()
  *   *  	RETURNS:  true (1) if array is full (minus dummy slot); false (0) if not  */
 int buffer_isFull (buffer * buf)
 {
-	return ((buf->end + 1) % (MAX_BUFFER_SIZE+1) == buf->start);
+	return (buf->size == MAX_BUFFER_SIZE);
+/*	((buf->end + 1) % (MAX_BUFFER_SIZE+1) == buf->start);  */
 }
 
 /*  isEmpty:  check if array is empty
  *   *  	RETURNS:  true (1) if circular array is empty; false (0) if not  */
 int buffer_isEmpty (buffer * buf)
 {
-	return (buf->end == buf->start);
+	return (buf->size == 0);
+/*	return (buf->end == buf->start);  */
 }
 
 
@@ -60,6 +64,8 @@ int buffer_append (buffer * buf, int lts, int elm)
 		val.data = elm;
 		val.active = ACTIVE;
 		buf->data[buf->end] = val;
+		buf->size++;
+		buf->upperlimit++;
 		if (buf->open == buf->end) {
 			buf->open += 1;
 			if (buf->open > MAX_BUFFER_SIZE)
@@ -87,7 +93,8 @@ void buffer_clear (buffer * buf, int num)
 	}
 	buf->start = i;
 	buf->offset += num;
-	
+	buf->size -= num;
+
 }
 
 
@@ -100,6 +107,8 @@ void buffer_clear_all (buffer * buf, int num)
 	buf->start = 0;
 	buf->end = 0;
 	buf->open = 0;
+	buf->size = 0;
+	buf->offset = buf-> upperlimit;
 }
 
 
@@ -112,11 +121,18 @@ void buffer_clear_all (buffer * buf, int num)
  * 		TODO:  CHECK FOR ACTIVE DATA VALUE  */
 Value * buffer_get (buffer * buf, int index)
 {
+	if (index > buf->upperlimit)  {
+		printf("ERROR! Index out of bounds on get %d", index);
+		return 0;
+	}
 	return &(buf->data[(buf->start + index - buf->offset) % (MAX_BUFFER_SIZE + 1)]);
 }
 
 int buffer_isActive (buffer * buf, int index)  {
 	Value elm;
+	if (index > buf->upperlimit) {
+		return FALSE;
+	}
 	elm = buf->data[(buf->start + index - buf->offset) % (MAX_BUFFER_SIZE + 1)];
 	return (elm.active == ACTIVE);
 }
@@ -128,12 +144,6 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 {
 	Value val;
 	int local_index;
-	
-	/* Check for full buffer & return error */
-	if (buffer_isFull(buf)) {
-		printf("ERROR! Buffer is full\n");
-		return -1;
-	}
 	
 	/* Check for Index OOB & return error */
 	if (index > (buf->offset + MAX_BUFFER_SIZE+1)) {
@@ -147,9 +157,12 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 	val.active = ACTIVE;
 	
 	local_index = (buf->start + (index - buf->offset)) % (MAX_BUFFER_SIZE + 1);
+	if (buf->data[local_index].active == INACTIVE) {
+		buf->size++;
+	}
 	buf->data[local_index] = val;
 	
-	/*  insert into current open slot */
+	/*  UPDATE "open": If inserting into current open slot, update to next open pos */
 	if (local_index == buf->open)
 	{
 		/*  FIND next open slot  */
@@ -160,22 +173,21 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 		} while (buf->data[buf->open].active == ACTIVE);
 	}
 	
-	/*  insert into end ( = append op) */
-	if (local_index == buf->end) {
-		buf->end++;
-		if (buf->end > MAX_BUFFER_SIZE)
-			buf->end = 0;
-	}
-	
-	/*  Otherwise:  Handle insertion based on where it's located relative to end position */
-	else if (  ((buf->start < buf->end) && ((local_index > buf->end) || (local_index < buf->start)))  ||
-			   ((buf->start > buf->end) &&  (local_index > buf->end) && (local_index < buf->start)) ) {
+	/*  UPDATE "end": IF inserting at or beyond current end position */
+	if (index >= buf->upperlimit)  {
+		buf->upperlimit = index;
 		buf->end = local_index + 1;
 		if (buf->end > MAX_BUFFER_SIZE) {
 			buf->end = 0;
 		}
 	}
-	
+/*	if (local_index == buf->end) {
+		buf->end++;
+		buf->upperlimit++;
+		if (buf->end > MAX_BUFFER_SIZE)
+			buf->end = 0;
+	}
+*/	
 	/*  RETURN:  First "open" slot in the Buffer */
 	if (buf->open >= buf->start) {
 		return (buf->open - buf->start + buf->offset);
@@ -210,24 +222,38 @@ void buffer_print(buffer * buf) {
 }
 
 int buffer_size(buffer * buf)  {
-	if (buf->end >= buf->start)  {
+	return (buf->size);
+/*	if (buf->end >= buf->start)  {
 		return (buf->end - buf->start);
 	}
 	else  {
 		return (buf->end - buf->start + MAX_BUFFER_SIZE + 1);
 	}
-}
+*/}
 
 
 int buffer_end(buffer * buf)  {
+	return buf->upperlimit;
+/*	printf("START=%d,  END=%d  OPEN=%d\n", buf->start, buf->end, buf->open);
 	if (buf->end >= buf->start)  {
 		return (buf->end + buf->offset - 1);
 	}
 	else  {
 		return (buf->end + MAX_BUFFER_SIZE + buf->offset);
 	}
+*/	
+}
+
+int buffer_first_open(buffer * buf) {
+	if (buf->open >= buf->start)  {
+		return (buf->offset + (buf->open - buf->start));
+	}
+	else  {
+		return (buf->offset + (MAX_BUFFER_SIZE + buf->open - buf->start));
+	}
 	
 }
+
 
 
 
