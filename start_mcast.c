@@ -20,57 +20,18 @@ int main(int argc, char*argv[])
      *----------------------------------------*/
 
 	/* Networking vars */
-	struct sockaddr_in    recv_addr;
 	struct sockaddr_in    send_addr;
-	struct sockaddr_in    from_addr;
-	socklen_t             from_len;
 	int                   mcast_addr;
 	int					  port; 
 	struct ip_mreq			mreq;
 	unsigned char			ttl_val;
-	int                   ss,sr;
-	fd_set                mask;
-	fd_set                dummy_mask,temp_mask;
-	int                   bytes;
+	int                   ss;
 	int                 	sock_num;
 	char                	mess_buf[MAX_PACKET_SIZE];
 	struct timeval  		timeout;        
 	
-	
-
 	/* Message structs for interpreting bytes */
-	Message         *out_msg;
-	Message			*in_msg;
-	Message			test_msg;
-
-	/* Process's Own State */
-	int				me;
-	int				num_machines;
-	int				lts;
-	int				max_order_lts;
-	int				state;
-	int				status_count;
-	int				nak_count;
-	
-	/* All Processes States  */
-	int				mid[MAX_MACHINES];
-	
-	/*  File I/O vals  */
-	FILE            *dest;
-	char            *dest_file;
-	unsigned int    file_size;
-	char            *c;
-
-	/*  Packet Handling  */
-    size_t          data_size;
-	char            data_buffer[MAX_PAYLOAD_SIZE];
-	int             packet_loss;
-	int				from_pid;
-
-	/*  Other vars	*/
-	int				index;
-
-
+	Message			start_msg;
 
 	/*------------------------------------------------------------
 	*    (1)  Conduct program Initialization
@@ -79,19 +40,6 @@ int main(int argc, char*argv[])
 	mcast_addr = 225 << 24 | 1 << 16 | 2 << 8 | 114;
 	port = 10140;
 
-
-	/*  Parse Command Line Args   
-	if (argc != 5) {
-		printf("usage: %s <num_of_packets> <machine_index> <num_of_machines> <loss_rate>\n", argv[0]);
-		exit(-1);
-	}
-	  
-	num_packets = atoi(argv[1]);
-	me = atoi(argv[2]);
-	num_machines = atoi(argv[3]);
-	loss_rate = atoi(argv[4]);
-	 */
-	
 
 	/* Open & Bind socket for sending multicast */
 	printdb("\t Open & Bind Sending Socket\n");
@@ -111,27 +59,12 @@ int main(int argc, char*argv[])
 	send_addr.sin_addr.s_addr = htonl(mcast_addr);
 	send_addr.sin_port = htons(port);
 
-	FD_ZERO( &mask );
-	FD_ZERO( &dummy_mask );
-	FD_SET( sr, &mask );
-
-	state = IDLE;
-	lts = 0;
-	max_order_lts = 0;
-	
-	for (index=0; index < num_machines; index++) {
-		mid[index] = 0;
-	}
-
     /*------------------------------------------------------------------
-     *
-     *      SEND ONE MESSAGE
-     *
+     *    SEND ONE MESSAGE
      *------------------------------------------------------------------*/
-
-	test_msg.tag = GO_MSG;
-	test_msg.pid = -1;
-	sendto(ss,(char *) &test_msg, sizeof(Message), 0,
+	start_msg.tag = GO_MSG;
+	start_msg.pid = -1;
+	sendto(ss,(char *) &start_msg, sizeof(Message), 0,
 			       (struct sockaddr *)&send_addr, sizeof(send_addr));
 	return 0;
 }

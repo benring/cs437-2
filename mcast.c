@@ -18,18 +18,18 @@
 void printarray(int *v, int n)  {
 	int i;
 	for (i=0; i<n; i++)  {
-		printf("  %3d,", v[i]);
+		printdb("  %3d,", v[i]);
 	}
-	printf("\n");
+	printdb("\n");
 }
 
 void printstatuses (int * v, int n)  {
 	int i;
 	printdb("STATUSES: ");
 	for (i=0; i<n; i++)  {
-		printf("  %2d,", v[i]);
+		printdb("  %2d,", v[i]);
 	}
-	printf("\n");
+	printdb("\n");
 	
 }
 
@@ -59,6 +59,11 @@ int get_min(int * a, int num)  {
 	return min;
 }
 
+/*  OTHER HELPER functions */
+int time_ms (struct timeval s, struct timeval e)
+{
+	return ((int)(e.tv_sec - s.tv_sec)*1000 + (int)(e.tv_usec - s.tv_usec)/1000);
+}
 
 int get_min_exclude(int * a, int num, int exclude)  {
 	int i;
@@ -104,20 +109,19 @@ int main(int argc, char*argv[])
 	/* Message structs for interpreting bytes */
 	Message         out_msg;
 	Message			*in_msg;
-	Message			test_msg;
 	Value			*elm;
 
 	/* Process's Internal State */
 	int				me;
 	int				num_machines;
 	int				lts;
-	int				max_order_lts;
 	int				state;
 	int				status_count;
 	int				nak_count;
 	int				last_nak[MAX_MACHINES];
 	int				this_nak;
 	int				max_batch;
+	int				loss_rate;
 
 	/*  Outgoing Message State (send)  */
 	int				msg_count;
@@ -132,40 +136,34 @@ int main(int argc, char*argv[])
 	int				max_lts[MAX_MACHINES];
 	int				last_message[MAX_MACHINES];
 	int				deliver_lts;
-	int				have_delivered;
+	int				have_sent;
 	
 	
 	/* All Processes States  */
-	int				mid[MAX_MACHINES];
+/*	int				mid[MAX_MACHINES];  */
 	int				sending[MAX_MACHINES];   
 
 	
 	/*  File I/O vals  */
 	FILE            *sink;
 	char            dest_file[10];
-	unsigned int    file_size;
-	char            *c;
+/*	char            *c;  */
 
 	/*  Packet Handling  */
-    size_t          data_size;
-	char            data_buffer[MAX_PAYLOAD_SIZE];
-	int             packet_loss;
 	int				from_pid;
 
 	/*  Other vars	*/
 	int				index;
-	int				min_lts;
 	int				loop, i, j;
-	int				can_deliver;
 	int				cur_minlts;
 	int				cur_minpid;
 	int				cur_minmid;
-	int				send_flag;
 	int				sequence_num;
-	int				send_window;
 	int				all_inactive;
 	int				all_delivered;
-
+	int				display_interval;
+	struct timeval  start_t;
+	struct timeval  end_t;
 
         linked_list *                   lost_packets;
 	/*------------------------------------------------------------
@@ -182,22 +180,23 @@ int main(int argc, char*argv[])
 		me = atoi(argv[1]);
 	}
 	num_packets = NUM_PACKET_DEBUG;
-	sprintf(dest_file, "%d.out", me);
 	num_machines = 3;
-	/*  Parse Command Line Args   
+	/*  Parse Command Line Args   */
 	if (argc != 5) {
 		printf("usage: %s <num_of_packets> <machine_index> <num_of_machines> <loss_rate>\n", argv[0]);
 		exit(-1);
 	}
 	  
 	num_packets = atoi(argv[1]);
-	me = atoi(argv[2]);
+	me = atoi(argv[2]) - 1;  /*  Machine Index is input on range [1..N], but used on [0..N-1]  */
 	num_machines = atoi(argv[3]);
 	loss_rate = atoi(argv[4]);
-	 */
+	sprintf(dest_file, "%d.out", me);
+	 
 	
-	recv_dbg_init(20, me);  
-
+	recv_dbg_init(loss_rate, me);  
+	srand(time(NULL));
+	
 	/* Open output file */
    
 
@@ -254,14 +253,16 @@ int main(int argc, char*argv[])
 	state = IDLE;
 	lts = -1;
 	deliver_lts = -1;
-	have_delivered = -1;
-	max_order_lts = 0;
+	have_sent = -1;
 	msg_count = 0;
+	status_count = 0;
+	nak_count = 0;
 	out_msg.pid = me;
 	out_buffer = buffer_init();
+	display_interval = DISPLAY_INTERVAL;
+	cur_minpid = 0;
 	
 	for (index=0; index < MAX_MACHINES; index++) {
-		mid[index] = 0;
 		max_mid[index] = -1;
 		max_lts[index] = -1;
 		max_ack[index] = -1;
@@ -286,9 +287,12 @@ int main(int argc, char*argv[])
 
 
 
-	printdb("\n\n\n-------------------------------------------------------------------------------------\n    MCAST: PID =  %d\n\n", me);
+	printinfo("\n\n\n-----------------------------------------\n");
+	printinfo("			PID  =  %4d\n", me);
+	printinfo("			Loss =  %4d%%\n\n", loss_rate);
+	
 
-	for(loop=0; loop<100000; loop++) {  
+	for(loop=0; loop<9000000; loop++) {  
 		/*---------------------------------------------------------
 		 * (1)  Implement SEND Algorithm
 		 *--------------------------------------------------------*/
@@ -305,9 +309,9 @@ int main(int argc, char*argv[])
 					out_msg.payload[index] = max_mid[index];
 					out_msg.payload[1+index+MAX_MACHINES] = sending[index];
 				}
-				if (have_delivered >= num_packets)  {
-					printdb("I've DELIVERED my last packet. # Packet status is now %d\n", have_delivered);
-					out_msg.payload[MAX_MACHINES] = have_delivered;
+				if (have_sent >= num_packets)  {
+					printdb("I've DELIVERED my last packet. # Packet status is now %d\n", have_sent);
+					out_msg.payload[MAX_MACHINES] = have_sent;
 				}
 				else {
 					out_msg.payload[MAX_MACHINES] = -1;
@@ -350,7 +354,6 @@ int main(int argc, char*argv[])
 					if (message_buffer[index].upperlimit > buffer_first_open(&message_buffer[index])) {
 						for (i=message_buffer[index].offset; i <= message_buffer[index].upperlimit; i++) {
 							printdb("B");
-							/*elm = buffer_get(&message_buffer[index], i);*/
 							if (!buffer_isActive(&message_buffer[index], i)) {
 								nak_count++;
 								out_msg.payload[index * NAK_QUOTA]++;
@@ -364,10 +367,6 @@ int main(int argc, char*argv[])
 						}
 					}
 					printdb("]");
-
-/*				  out_msg.payload[index*NAK_QUOTA+1] = message_buffer[index].offset;  
-				  printf("NAK for pid %d, SN %d\n", index, message_buffer[index].offset);
-*/
 				}
 				printdb("\n");
 				/*  SEND NAK MESSAGE  */
@@ -391,31 +390,12 @@ int main(int argc, char*argv[])
 			  */
 			out_msg.tag = DATA_MSG;
 			max_batch = msg_count + BATCH_SIZE;
-			send_flag = FALSE;
 			
-/*				send_window = 100000000;
-				for (index=0; index<num_machines; index++)  {
-					if ((index == me) && (max_mid[me] <0))  {
-						continue;
-					}
-					if (max_mid[index] < send_window)  {
-						send_window = max_mid[index];
-					}
-				}
-
-			send_window += MAX_BUFFER_SIZE;
-			printdb("MAX SEND:  %d   \n MAX-MID= ", send_window);
-			printarray(max_mid, num_machines);
-*/			
 			printdb("Highest possible send:  %d   \n", (out_buffer.offset + MAX_BUFFER_SIZE));
 			while ( (msg_count <= num_packets) &&
 					(msg_count < max_batch)  &&
-/*					(msg_count <= send_window) && */
 					(!buffer_isFull(&out_buffer)) ) {
-				send_flag = TRUE;
-				
 				lts++;
-
 				printdb("Sending DATA MSG #%d   (LTS=%d)\n", msg_count, lts);
 
 				 /* DATA MESSAGE:
@@ -424,23 +404,19 @@ int main(int argc, char*argv[])
 					*  payload[2] = Data Value  */
 				out_msg.payload[0] = msg_count++;
 				out_msg.payload[1] = lts; 
-				out_msg.payload[2] = (lts+msg_count)*(me+2);
+				out_msg.payload[2] = (rand() % 999999) + 1;
 			
-/*				max_mid[me]++;  */
 				max_lts[me] = lts;
 				buffer_append(&message_buffer[me], out_msg.payload[1], out_msg.payload[2]);
 				buffer_append(&out_buffer, out_msg.payload[1], out_msg.payload[2]);
-				
 				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 					   (struct sockaddr *)&send_addr, sizeof(send_addr));
-				have_delivered++;
+				have_sent++;
+				if (msg_count == display_interval) {
+					display_interval += DISPLAY_INTERVAL;
+					printinfo("Sent %7d Messages.\n", msg_count);
+				}
 			}
-
-/*			if (send_flag)  {
-				printdb("SEND SOME MESSAGES\n");
-				print_buffers(message_buffer, num_machines);
-			}
-*/		
 
 			/******************************************
 			 *   RE-SEND Lost Data Message(s)
@@ -450,7 +426,7 @@ int main(int argc, char*argv[])
 			  printdb("NEED to RE-SEND %d: ", index);
 			  /* Ensure packet is is my window  */
 			  if ((index >= out_buffer.offset) && (index <= out_buffer.upperlimit) ) {
-				printf("Resending packet %d\n", index);
+				printdb("Resending packet %d\n", index);
 				out_msg.tag = DATA_MSG;
 				elm = buffer_get(&out_buffer, index);
 				out_msg.payload[0] = index;
@@ -500,7 +476,7 @@ int main(int argc, char*argv[])
 			status_count = STATUS_TRIGGER;  /*  Always send STATUS MSG on timeout -- ??? */
 			nak_count = NAK_TRIGGER;
 			if (state == RECV)  {
-				state == SEND;			
+				state = SEND;			
 			}
 			printdb("timed_out when trying to receive\n");
 			continue;
@@ -522,6 +498,8 @@ int main(int argc, char*argv[])
 			 *  RECEIVE the Start Signal to get out of IDLE State
 			 *****************************************************/
 			case GO_MSG:
+				printinfo("Received Start signal. Multicasting...\n");
+				gettimeofday(&start_t, NULL);
 				state = SEND;
 				break;
 		
@@ -535,11 +513,11 @@ int main(int argc, char*argv[])
 				if (in_msg->payload[1] > lts)  {
 					lts = in_msg->payload[1];
 				}
-				/*  SET: highest in-order message ID from the last sender, "OPEN-1" 
-				 /* DATA MESSAGE:
-					*  payload[0] = message ID (mid)
-					*  payload[1] = Lamport TimeStamp (LTS)
-					*  payload[2] = Data Value  */
+				/*  SET: highest in-order message ID from the last sender, "OPEN-1"   */
+							 /* DATA MESSAGE:
+								*  payload[0] = message ID (mid)
+								*  payload[1] = Lamport TimeStamp (LTS)
+								*  payload[2] = Data Value  */
 
 					/*  CHECK: Duplicate packet  */
 					if (buffer_isActive(&message_buffer[from_pid], in_msg->payload[0])) {
@@ -549,11 +527,11 @@ int main(int argc, char*argv[])
 					else if (in_msg->payload[0] < message_buffer[from_pid].offset) {
 						printdb("RECEIVED AN OLD PACKET\n");
 					}
-					/*  CHECK: INDEX OOB  -- TODO:  Handle this better*/
+					/*  CHECK: INDEX OOB  */
 					else if (in_msg->payload[0] > (message_buffer[from_pid].offset + MAX_BUFFER_SIZE)) {
 						printdb("******Ignoring Message due to lack of buffer size on %d ******\n", from_pid);
 					}
-					/*  CHECK:  Buffer Overflow  */
+					/*  CHECK:  Buffer Overflow -- TODO:  Handle this better or eliminate to optimize? */
 					else if (buffer_isFull(&message_buffer[from_pid]))  {
 						printdb("******Ignoring Message to due to Buffer Overflow on %d ******\n", from_pid);
 						/*exit(0);*/
@@ -586,6 +564,7 @@ int main(int argc, char*argv[])
 				printdb("Received STATUS MSG from PID %d, its status = %d\n", from_pid, sending[from_pid]);
 				
 /*				cur_minmid = get_min_exclude(max_ack, num_machines, me);  */
+				/* TODO: OPTIMize by keeping updated "min-max-ack value  */
 				cur_minmid = get_min(max_ack, num_machines);
 
 				/*  CHECK: Am I done sending Messages?  */
@@ -609,33 +588,21 @@ int main(int argc, char*argv[])
 					max_mid[me] = -1;
 				}
 				
-				/*  CHECK: Is this process sending a message 
-				if (in_msg->payload[from_pid] >= 0) {
-					sending[from_pid] = ACTIVE;
-				}
-				else {
-					printdb("PROCESS %d HAS GONE INACTIVE\n", from_pid);
-					sending[from_pid] = INACTIVE;
-				}
-				*/
 				/* CHECK:  Do I have all the packets this pid sends? */
 				last_message[from_pid] = in_msg->payload[MAX_MACHINES];
 				
 				if ((last_message[from_pid] >= 0) && (message_buffer[from_pid].offset > last_message[from_pid])) {
 					printdb("Have received ALL packets from pid %d thru %d", from_pid, in_msg->payload[MAX_MACHINES]);
 					max_lts[from_pid] = -1;
-/*					sending[from_pid] = INACTIVE;   */
 				}
 				
 				printstatuses(sending, num_machines);
-				
 				
 				/*  CHECK: Have I delivered all messages?? */
 				printdb("CHECK ALL DELIVERED. Last messages: ");
 				printarray(last_message, num_machines);
 				all_delivered = TRUE;
 				for (index=0; index<MAX_MACHINES; index++) {
-/*						if ((last_message[index] >= 0) && (message_buffer[index].offset <= last_message[index]))  {   */
 					if (((sending[index] == ACTIVE) && (last_message[index] < 0)) ||
 						((last_message[index] >= 0) && (message_buffer[index].offset < last_message[index])))  { 
 						printdb(" Seems %d is not done delivering", index);
@@ -644,6 +611,7 @@ int main(int argc, char*argv[])
 					}
 				}
 				printdb("\n");
+				/*  IF: I have delivered all message move out of Active State */
 				if (all_delivered)  {
 					printstatuses(sending, num_machines);
 					printdb("ALL DELIVERED  -----  GOING ");
@@ -660,7 +628,6 @@ int main(int argc, char*argv[])
 						exit(0);
 					}
 				}
-				
 				
 				/* STATUS CHECK:  Has everyone completed sending messages  */
 				all_inactive = TRUE;
@@ -690,7 +657,7 @@ int main(int argc, char*argv[])
 				 *  DELIVERY ALGORITHM 
 				 *****************************************************/
 				/*  CHECK LTS for message delivery  */
-				printf(" MAX LTS=");
+				printdb(" MAX LTS=");
 				printarray(max_lts, num_machines);
 				
 				deliver_lts = 10000000;
@@ -730,15 +697,11 @@ int main(int argc, char*argv[])
 								/*printdb("WILL TRY TO DELIVER LTS: %d, PID: %d\n", cur_minlts, cur_minpid); */
 							}
 						}
-/*						if ((cur_minpid == me) && (get_min_exclude(max_ack, num_machines, me) < out_buffer.offset)) {
-							break;
-						}
-						 
-*/						if (cur_minlts <= deliver_lts)  {
+						if (cur_minlts <= deliver_lts)  {
 							printdb("DELIVERING:  LTS=%d,PID=%d\n", cur_minlts, cur_minpid);
 							/*  WRITE HERE  */
 							elm = buffer_get(&message_buffer[cur_minpid], message_buffer[cur_minpid].offset);
-							fprintf(sink, "LTS: %d\t, %2d, %8d, %8d\n", elm->lts, cur_minpid, message_buffer[cur_minpid].offset, elm->data);
+							fprintf(sink, "%2d, %8d, %8d\n", cur_minpid+1, message_buffer[cur_minpid].offset, elm->data);
 	
 							/*  Set MAX_MID to what you are about to deliver  */
 							printdb("MaxMid Array = "); printarray(max_mid, num_machines);
@@ -759,21 +722,13 @@ int main(int argc, char*argv[])
 									max_mid[me] = message_buffer[me].offset;
 								}
 							}
-							
-							
-
-							/*exit(0);*/
 						}
 						else  {
 							break;
 						}
 					}
-					
-
-
 					printstatuses(sending, num_machines);
 					print_buffers(message_buffer, num_machines);
-					
 				}
 				break;
 				
@@ -784,7 +739,6 @@ int main(int argc, char*argv[])
 			case NAK_MSG:
 				/*  Update LOST msg queue  */
 				printdb("------Received NAK from %d for: ", from_pid);
-				
 				index = me*NAK_QUOTA;
 				i = 1;
 				while (i <= in_msg->payload[index])  {
@@ -800,14 +754,11 @@ int main(int argc, char*argv[])
 					}
 				}
 				printdb("\n");
-
-/*				num = in_msg->payload[me*NAK_QUOTA];
-				printdb("I need to resend %d packets \n", num);
-				printdb("First one is: %d\n", in_msg->payload[me*NAK_QUOTA+1]);
-				enq(&lost_packets, in_msg->payload[me*NAK_QUOTA+1]);
-*/				break;
-				
+				break;
 			
+			/****************************************************
+			 *  RECEIVE a KILL message
+			 *****************************************************/
 			case KILL_MSG:
 				printdb("RECEIVED KILL CODE from PID %d\n", from_pid);
 				printstatuses(sending, num_machines);
@@ -831,11 +782,15 @@ int main(int argc, char*argv[])
 	}
 	else {
 		out_msg.tag = KILL_MSG;
+		printinfo("All Mesages complete: %d messages\n. Terminating.\n\n", msg_count-1);
+		gettimeofday(&end_t, NULL);
+		printinfo("TOTAL TIME:   %3d.%d secs\n\n", ((int)(end_t.tv_sec - start_t.tv_sec)), ((int)(end_t.tv_usec - start_t.tv_usec)));
+
+		/*  RE-SEND KILL Message N-Times  */
 		for (index = 0; index < num_machines; index++)  {
 			printdb("SEND: KILL Code #%d\n", index);
 			sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 			   (struct sockaddr *)&send_addr, sizeof(send_addr));
-					   
 		}
 		printdb("\n Terminating.\n-------------------------------\n\n");
 	}
