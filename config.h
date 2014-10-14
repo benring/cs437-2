@@ -25,12 +25,14 @@
 #endif
 
 #define INFO 1 
-
 #ifdef  INFO
 #define printinfo(args...) printf(args);
 #else
 #define printinfo(args...)
 #endif
+
+#define SEL_DEBUG 0
+#define printsel(args...) if (SEL_DEBUG > 0) printf(args)
 
 
 #define NUM_PACKET_DEBUG 5000
@@ -40,18 +42,19 @@
 #define TRUE 1
 #define FALSE 0
 #define MAX_MACHINES 10
-#define NAK_QUOTA 25
 #define MAX_PACKET_SIZE 1212   
 
 /* Discretionary Declarations */
-#define MAX_BUFFER_SIZE 1000
-#define BATCH_SIZE 8
+#define MAX_BUFFER_SIZE 24
+#define BATCH_SIZE 4
 #define STATUS_TRIGGER 16
-#define NAK_TRIGGER 32
+#define NAK_TRIGGER 100
+#define NAK_QUOTA 25
+#define NAK_BACKOFF (MAX_BUFFER_SIZE / 2)
 
 /* Timeouts  */
 #define TIMEOUT_IDLE 60
-#define TIMEOUT_RECV 50000
+#define TIMEOUT_RECV 10000
 
 /*  Process States  */
 #define IDLE 0
@@ -68,7 +71,7 @@
 #define COMPLETING 5
 
 /* Other defs  */
-#define DISPLAY_INTERVAL 10000
+#define DISPLAY_INTERVAL 1000
 
 #endif
 

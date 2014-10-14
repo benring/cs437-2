@@ -85,6 +85,7 @@ int buffer_size(buffer * buf);
 int buffer_end(buffer * buf);
 /* print: print out elements in the buffer, for debugging. */
 void buffer_print(buffer * buf);
+void buffer_print_select(buffer * buf);
 
 int buffer_first_open(buffer * buf);
 

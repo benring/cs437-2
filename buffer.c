@@ -214,6 +214,31 @@ void buffer_print(buffer * buf) {
   printdb("\n");
 }
 
+void buffer_print_select(buffer * buf) {
+  int i = buf->offset;
+  int j; 
+  for(i = 0; i < MAX_BUFFER_SIZE + 1; i++) {
+    printsel("%5d", i + buf->offset); 
+  }
+  printsel("\n");
+
+  j = buf->start;
+  for(i = 0; i < MAX_BUFFER_SIZE+1; i++) {
+    if (j > MAX_BUFFER_SIZE) {
+      j = 0;
+    }
+    if(buf->data[j].active == ACTIVE) {
+      printsel("%5d", buf->data[j].lts);
+    }
+    else {
+      printsel("%5c", 'x');
+    }
+    j++;
+  }
+  printsel("\n");
+}
+
+
 int buffer_size(buffer * buf)  {
 	return (buf->size);
 }
