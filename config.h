@@ -15,8 +15,8 @@
 #include <sys/time.h>
 
 
-/*  COMMENT OUT FOLLOWING LINE TO REMOVE DEBUGGING 
-#define DEBUG 1 */
+/*  COMMENT OUT FOLLOWING LINE TO REMOVE DEBUGGING */
+/*#define DEBUG 1  */
 
 #ifdef  DEBUG
 #define printdb(args...) printf(args);
@@ -46,7 +46,7 @@
 /* Discretionary Declarations */
 #define MAX_BUFFER_SIZE 1000
 #define BATCH_SIZE 8
-#define STATUS_TRIGGER 24
+#define STATUS_TRIGGER 16
 #define NAK_TRIGGER 32
 
 /* Timeouts  */

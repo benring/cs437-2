@@ -191,7 +191,7 @@ int main(int argc, char*argv[])
 	me = atoi(argv[2]) - 1;  /*  Machine Index is input on range [1..N], but used on [0..N-1]  */
 	num_machines = atoi(argv[3]);
 	loss_rate = atoi(argv[4]);
-	sprintf(dest_file, "%d.out", me);
+	sprintf(dest_file, "%d.out", (me+1));
 	 
 	
 	recv_dbg_init(loss_rate, me);  
@@ -309,7 +309,7 @@ int main(int argc, char*argv[])
 					out_msg.payload[index] = max_mid[index];
 					out_msg.payload[1+index+MAX_MACHINES] = sending[index];
 				}
-				if (have_sent >= num_packets)  {
+				if (have_sent >= num_packets-1)  {
 					printdb("I've DELIVERED my last packet. # Packet status is now %d\n", have_sent);
 					out_msg.payload[MAX_MACHINES] = have_sent;
 				}
@@ -392,7 +392,7 @@ int main(int argc, char*argv[])
 			max_batch = msg_count + BATCH_SIZE;
 			
 			printdb("Highest possible send:  %d   \n", (out_buffer.offset + MAX_BUFFER_SIZE));
-			while ( (msg_count <= num_packets) &&
+			while ( (msg_count < num_packets) &&
 					(msg_count < max_batch)  &&
 					(!buffer_isFull(&out_buffer)) ) {
 				lts++;
@@ -570,7 +570,7 @@ int main(int argc, char*argv[])
 				/*  CHECK: Am I done sending Messages?  */
 				printdb(" MAX ACK = ");
 				printarray(max_ack, num_machines);
-				if (cur_minmid >= num_packets)  {
+				if (cur_minmid >= num_packets-1)  {
 					printstatuses(sending, num_machines);
 					printdb("END OF MESSAGES  ------------- GOING");
 					if ((sending[me] == ACTIVE) || (sending[me] == DONE_SENDING))  {
@@ -713,7 +713,7 @@ int main(int argc, char*argv[])
 							if (cur_minpid == me) {
 							/*  If you have delivered your last message, reset your max-mid to -1  */
 								max_ack[me]++;
-								if (max_mid[me] >= num_packets) {
+								if (max_mid[me] >= num_packets-1) {
 									printdb(" ----  DELIVERED MY OWN LAST PACKET -- Resetting LTS to -1\n");
 /*									sending[me] = DONE_DELIVERING;  */
 									max_lts[me] = -1; 
@@ -782,7 +782,7 @@ int main(int argc, char*argv[])
 	}
 	else {
 		out_msg.tag = KILL_MSG;
-		printinfo("All Mesages complete: %d messages\n. Terminating.\n\n", msg_count-1);
+		printinfo("All Mesages complete: %d messages\n. Terminating.\n\n", msg_count);
 		gettimeofday(&end_t, NULL);
 		printinfo("TOTAL TIME:   %3d.%d secs\n\n", ((int)(end_t.tv_sec - start_t.tv_sec)), ((int)(end_t.tv_usec - start_t.tv_usec)));
 
