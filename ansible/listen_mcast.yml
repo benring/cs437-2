@@ -1,0 +1,3 @@
+- hosts: all
+  tasks:
+    - shell: cs437/assign2/mcast {{numPackets}} {{machineIndex}} {{play_hosts|length}} 0
