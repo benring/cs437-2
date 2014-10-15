@@ -1,34 +1,37 @@
 /******************************************************************************
- *  File: buffer.h  - REF
- * 
- *  Author: Benjamin Ring
- *  Date:   9 September 2014
- *    
- *  Descirption:  The circular buffer array uses a static array with a start & end
- *    value. Elements are appended to the end and removed from the start in a FIFO manner. 
- *    Implementation provides arbitrary indexing of elements relative to the start position.
- *    In this implementation, the circular array will always contain one "dummy" slot which is never 
- *    filled, thus the actual memory used will be MAX_SIZE + 1.
- ********************************************************************************/
-
-
-
+ *  File:  buffer.c
+ *
+ *  Author: Benjamin Ring & Josh Wheeler
+ *  Date:   15 October 2014
+ *
+ *  Description:  The circular buffer array uses a static array with a start, end
+ *   & open value which reference internal indices in the array. For external
+ * 	 referencing, the values offset & upperlimit should be used. Offset is the
+ *   position of the "start" element in the buffer and upperlimit refers to the
+ *   highest index-able value in the buffer at any given time. The values of 
+ *   start, end, and open are always in the range [0..MAX_BUFFER_SIZE]. Offset and
+ *   upperlimit are positive ints. Upperlimite is always greater than or equal to
+ * 	 offset, but never greater than offset + MAX_BUFFER_SIZE. 
+ * 	 Elements are only removed from the start.
+ *   Elements can be abitrarily inserted into any position between offset..MAX_BUFFER_SIZE
+ *   Elements can also be appended to the end.
+ *   Implementation provides arbitrary indexing of elements relative to zero. In this way, 
+ *   the buffer acts as a "sliding window" within a larger data set of Values. 
+ *   In addition, the buffer will always contain one "dummy" slot which is never
+ *   filled, thus the actual memory used will be MAX_BUFFER_SIZE + 1.
+ *******************************************************************************/
 #ifndef BUFFER_H
 #define BUFFER_H
-
-
 #include "config.h"
-#include "message.h"
-
 
 typedef struct buffer {
-   int start;
-   int end;
-   int open;
-   int offset;
-   int size;
-   int upperlimit;
-   Value data[MAX_BUFFER_SIZE+1];
+   int start;			/* Internal "start" position of window buffer*/
+   int end;				/* Internal "end" position of window buffer */
+   int open;			/* Internal reference of the first open slot in window */
+   int offset;			/* External reference index of the first slot in window */
+   int upperlimit;		/* External reference index of the last slot in window */
+   int size;			/* Size of window */
+   Value data[MAX_BUFFER_SIZE+1];  /* window buffer */
 } buffer;
 
 
@@ -57,13 +60,6 @@ int buffer_append (buffer * buf, int lts, int elm);
  *      but its slot(s) are made for available for access  
  *          Also: this is safe to call on an empty list			*/
 void buffer_clear (buffer * buf, int num);
-
-
-/*  clear:  clears all elements from the buffer & resets it
- *       NOTE: data is never actually "cleared" since the array is static,
- *         but its slot(s) are made for available for access  
- *         Also: this is safe to call on an empty list			*/
-void buffer_clear_all (buffer * buf, int num);
 
 
 /*  get: indexing function

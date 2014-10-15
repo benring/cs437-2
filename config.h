@@ -18,7 +18,7 @@
 /*  COMMENT OUT FOLLOWING LINE TO REMOVE DEBUGGING */
 /*#define DEBUG 1  */
 
-#ifdef  DEBUG
+#ifdef  DEBUG 
 #define printdb(args...) printf(args);
 #else
 #define printdb(args...)
@@ -43,25 +43,31 @@
 #define FALSE 0
 #define MAX_MACHINES 10
 #define MAX_PACKET_SIZE 1212   
+#define MAX_PAYLOAD_SIZE (MAX_PACKET_SIZE-(sizeof(char)+sizeof(int)))
+#define MCAST_ADDR (225 << 24 | 1 << 16 | 2 << 8 | 114)
+#define PORT 10140
 
 /* Discretionary Declarations */
-#define MAX_BUFFER_SIZE 31
-#define BATCH_SIZE 4
-#define STATUS_TRIGGER 16
-#define NAK_TRIGGER 60
-#define RESEND_TRIGGER 4
+#define MAX_BUFFER_SIZE 127
+#define BATCH_SEND 1
+#define BATCH_RECEIVE 8
+#define STATUS_TRIGGER 128
+#define NAK_TRIGGER 640
+#define RESEND_TRIGGER 32
+#define TRIGGER_DIVISOR 16
 #define NAK_QUOTA 28
 #define NAK_BACKOFF ((MAX_BUFFER_SIZE+1)/ 2)
 
 /* Timeouts  */
 #define TIMEOUT_IDLE 60
-#define TIMEOUT_RECV 3000
+#define TIMEOUT_RECV 150
 
 /*  Process States  */
 #define IDLE 0
 #define SEND 1
 #define RECV 2
-#define KILL 3
+#define PROCESS 3
+#define KILL 4
 
 /* Sending States */
 #define UNKNOWN 0
@@ -71,8 +77,49 @@
 #define DONE_SENDING 4
 #define COMPLETING 5
 
+/*  MESSAGE TAGS  */
+#define DATA_MSG 'D'
+#define STATUS_MSG 'S'
+#define NAK_MSG 'N' 
+#define EOM_MSG 'E'
+#define GO_MSG 'G'
+#define KILL_MSG 'K'
+
 /* Other defs  */
-#define DISPLAY_INTERVAL 1000
+/*#define DISPLAY_INTERVAL 1000 */
+
+/*  Basic Message Struct:  TAG, SOURCE, & PAYLOAD  */
+typedef struct Message {
+	char tag;
+	int pid;
+	int payload[MAX_PAYLOAD_SIZE];
+} Message;
+
+
+typedef struct Value {
+	int active;
+	int lts;
+	int data;
+} Value;
+
+/*
+ * DATA MESSAGE:
+ * 	payload[0] = message ID (mid)
+ *  payload[1] = Lamport TimeStamp (LTS)
+ *  payload[2] = Data Value
+ * 
+ * STATUS MESSAGE:
+ *  payload[0:MAX_MACHINES-1] = mid
+ *  payload[MAX_MACHINES] = Message ID of last packet (if already sent); otherwise -1
+ *  payload[MAX_MACHINES+1:MAX_MACHINES*2] = status
+ * 
+ * NAK MESSAGE:
+ *  payload[0] = # lost msgs for PID 0
+ *  payload[1..9] = lost messages, PID 0
+ *  payload[10] = pid1
+ *  payload[20] = pid2
+ *  etc.....
+*/
 
 #endif
 

@@ -9,7 +9,9 @@
  *  To implement: Update comparison operation (in search)
  *
  *****************************************************************************/
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "linkedlist.h"
 
 

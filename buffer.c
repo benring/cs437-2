@@ -1,14 +1,10 @@
 /******************************************************************************
- *  File:  buffer.c - REF
+ *  File:  buffer.c
  *
- *  Author: Benjamin Ring
- *  Date:   9 September 2014
+ *  Author: Benjamin Ring & Josh Wheeler
+ *  Date:   15 October 2014
  *
- *  Descirption:  The circular buffer array uses a static array with a start & end
- *   value. Elements are appended to the end and removed from the start in a FIFO manner.
- *   Implementation provides arbitrary indexing of elements relative to the start position.
- *   In this implementation, the circular array will always contain one "dummy" slot which is never
- *   filled, thus the actual memory used will be MAX_BUFFER_SIZE + 1.
+ *  Description:  Buffer Implemention. See buffer.h for full description.
  *******************************************************************************/
  
 #include <stdio.h>
@@ -35,25 +31,23 @@ buffer buffer_init ()
 }
 
 /*  isFull:  check if array is full
- *   *  	RETURNS:  true (1) if array is full (minus dummy slot); false (0) if not  */
+ *    RETURNS:  true (1) if array is full (minus dummy slot); false (0) if not  */
 int buffer_isFull (buffer * buf)
 {
 	return (buf->size == MAX_BUFFER_SIZE);
-/*	((buf->end + 1) % (MAX_BUFFER_SIZE+1) == buf->start);  */
 }
 
 /*  isEmpty:  check if array is empty
- *   *  	RETURNS:  true (1) if circular array is empty; false (0) if not  */
+ *    RETURNS:  true (1) if circular array is empty; false (0) if not  */
 int buffer_isEmpty (buffer * buf)
 {
 	return (buf->size == 0);
-/*	return (buf->end == buf->start);  */
 }
 
 
 /*  append: adds elm at end by copying elements contents into buffer;
- *   *  	increments end value by 1.
- *    *  	RETURNS: 1 if successful, -1 if error (array is full)   */
+ *   increments end value by 1.
+ *     RETURNS: 1 if successful, -1 if error (array is full)   */
 int buffer_append (buffer * buf, int lts, int elm)
 {
 	Value val;
@@ -82,9 +76,8 @@ int buffer_append (buffer * buf, int lts, int elm)
 /*  clear:  clears `num` elements from the start of the buffer
  *       NOTE: data is never actually "cleared" since the array is statiFc,
  *          but its slot(s) are made for available for access
- *           Also: this is safe to call on an empty list			
- * 		TODO: check for efficiency*/
-void buffer_clear (buffer * buf, int num)
+ *           Also: this is safe to call on an empty list	*/
+ void buffer_clear (buffer * buf, int num)
 {
 	int i, j;
 	i = (buf->start + num) % (MAX_BUFFER_SIZE+1);
@@ -94,24 +87,7 @@ void buffer_clear (buffer * buf, int num)
 	buf->start = i;
 	buf->offset += num;
 	buf->size -= num;
-
 }
-
-
-/*  clear:  clears all elements from the buffer & resets it
- *   *    NOTE: data is never actually "cleared" since the array is static,
- *    *      but its slot(s) are made for available for access
- *     *      Also: this is safe to call on an empty list			*/
-void buffer_clear_all (buffer * buf, int num)
-{
-	buf->start = 0;
-	buf->end = 0;
-	buf->open = 0;
-	buf->size = 0;
-	buf->offset = buf-> upperlimit;
-}
-
-
 
 
 /*  get: indexing function
@@ -128,6 +104,8 @@ Value * buffer_get (buffer * buf, int index)
 	return &(buf->data[(buf->start + index - buf->offset) % (MAX_BUFFER_SIZE + 1)]);
 }
 
+/*
+ *  isActive:  Checks to see if the index position is "Active" (in use) */
 int buffer_isActive (buffer * buf, int index)  {
 	Value elm;
 	if (index > buf->upperlimit) {
@@ -138,8 +116,10 @@ int buffer_isActive (buffer * buf, int index)  {
 }
 
 
-
-/*  put: inserts element at given index  */
+/*  put: insert operation
+ * 		Inserts element at given index and sets data values 
+ * 		Checks and, if needed, updates the end and open position
+			as well as upperlimit  */
 int buffer_put (buffer * buf, int lts, int elm, int index)
 {
 	Value val;
@@ -190,6 +170,7 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 	}
 }
 
+/*  print: display buffer LTS value (useful for debugging) */
 void buffer_print(buffer * buf) {
   int i = buf->offset;
   int j; 
@@ -214,6 +195,7 @@ void buffer_print(buffer * buf) {
   printdb("\n");
 }
 
+/*  print: display buffer LTS value (useful for debugging) */
 void buffer_print_select(buffer * buf) {
   int i = buf->offset;
   int j; 
@@ -243,7 +225,6 @@ int buffer_size(buffer * buf)  {
 	return (buf->size);
 }
 
-
 int buffer_end(buffer * buf)  {
 	return buf->upperlimit;
 }
@@ -255,7 +236,6 @@ int buffer_first_open(buffer * buf) {
 	else  {
 		return (buf->offset + (MAX_BUFFER_SIZE + buf->open - buf->start));
 	}
-	
 }
 
 

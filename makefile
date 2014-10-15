@@ -1,6 +1,6 @@
 CC=gcc
 
-CFLAGS = -ansi -c -g -Wall -pedantic -D_GNU_SOURCE -fdiagnostics-color=always
+CFLAGS = -ansi -c -g -Wall -pedantic -D_GNU_SOURCE -fdiagnostics-color=always -Wno-variadic-macros
 
 all: mcast start_mcast
 
@@ -18,7 +18,7 @@ clean:
 	rm mcast
 	rm start_mcast
 
-%.o:    %.c message.h config.h buffer.h
+%.o:    %.c config.h buffer.h linkedlist.h
 	$(CC) $(CFLAGS) $*.c -O3
 
 
