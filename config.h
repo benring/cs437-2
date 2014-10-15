@@ -45,16 +45,17 @@
 #define MAX_PACKET_SIZE 1212   
 
 /* Discretionary Declarations */
-#define MAX_BUFFER_SIZE 24
+#define MAX_BUFFER_SIZE 31
 #define BATCH_SIZE 4
 #define STATUS_TRIGGER 16
-#define NAK_TRIGGER 100
-#define NAK_QUOTA 25
-#define NAK_BACKOFF (MAX_BUFFER_SIZE / 2)
+#define NAK_TRIGGER 60
+#define RESEND_TRIGGER 4
+#define NAK_QUOTA 28
+#define NAK_BACKOFF ((MAX_BUFFER_SIZE+1)/ 2)
 
 /* Timeouts  */
 #define TIMEOUT_IDLE 60
-#define TIMEOUT_RECV 10000
+#define TIMEOUT_RECV 3000
 
 /*  Process States  */
 #define IDLE 0
