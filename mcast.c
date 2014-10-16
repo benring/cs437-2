@@ -365,7 +365,10 @@ int main(int argc, char*argv[])
 			 *****************************************/
 			if (sending[me] != INACTIVE)  {
 				out_msg.tag = DATA_MSG;
-				send_count = msg_count + BATCH_SEND;
+				
+				send_count = (out_buffer.size < (MAX_BUFFER_SIZE / 2)) ?
+					msg_count + (MAX_BUFFER_SIZE) :
+					msg_count + BATCH_SEND;
 				
 				printdb("Highest possible send:  %d   \n", (out_buffer.offset + MAX_BUFFER_SIZE));
 				while ( (msg_count < num_packets) &&
@@ -443,7 +446,7 @@ int main(int argc, char*argv[])
 
 		/*  Receive Data  */
 		sock_num = select(FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
-		if ((sock_num > 0) && FD_ISSET(sr, &temp_mask)) {
+		if ((sock_num > 0) && (FD_ISSET(sr, &temp_mask))) { 
 			bytes = (state == IDLE) ?
 				recv(sr, mess_buf, sizeof(mess_buf), 0) :
 				recv_dbg(sr, mess_buf, sizeof(mess_buf), 0);
@@ -456,7 +459,7 @@ int main(int argc, char*argv[])
 			}
 			in_msg = (Message *) mess_buf;
 			receive_count++;
-		} else {
+		} else if (sock_num == 0) {
 			if (state != IDLE)  {
 				totime += (TIMEOUT_RECV - timeout.tv_usec);
 			}
@@ -470,6 +473,9 @@ int main(int argc, char*argv[])
 			}
 			printdb("timed_out when trying to receive\n");
 			continue;
+		} else {
+			printf(" SOCK NUM %d", sock_num);
+			exit(0);
 		}
 
 		from_pid = in_msg->pid;
@@ -559,7 +565,7 @@ int main(int argc, char*argv[])
 				/*  CHECK: Am I done sending Messages?  */
 				printdb(" MAX ACK = ");
 				printarray(max_ack, num_machines);
-				if (cur_minmid >= num_packets-1)  {
+				if ((msg_count >= num_packets-1) && (cur_minmid >= num_packets-1))  {
 					printstatuses(sending, num_machines);
 					printdb("END OF MESSAGES  ------------- GOING");
 					if ((sending[me] == ACTIVE) || (sending[me] == DONE_SENDING))  {
@@ -585,9 +591,9 @@ int main(int argc, char*argv[])
 					printdb("Have received ALL packets from pid %d thru %d", from_pid, in_msg->payload[MAX_MACHINES]);
 					max_lts[from_pid] = -1;
 				}
-				
 				printstatuses(sending, num_machines);
-				
+
+
 				/*  CHECK: Have I delivered all messages?? */
 				printdb("CHECK ALL DELIVERED. Last messages: ");
 				printarray(last_message, num_machines);
@@ -724,6 +730,8 @@ int main(int argc, char*argv[])
 					printstatuses(sending, num_machines);
 					print_buffers(message_buffer, num_machines);
 				}
+				/*===========  END of DELIVERY ALGORITYM  ================*/
+				
 				gettimeofday(&d2, NULL);
 				ddiff += time_diff(d1, d2);
 				break;

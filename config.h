@@ -51,10 +51,10 @@
 #define MAX_BUFFER_SIZE 127
 #define BATCH_SEND 1
 #define BATCH_RECEIVE 8
-#define STATUS_TRIGGER 128
-#define NAK_TRIGGER 640
+#define STATUS_TRIGGER 64
+#define NAK_TRIGGER 1024
 #define RESEND_TRIGGER 32
-#define TRIGGER_DIVISOR 16
+#define TRIGGER_DIVISOR 64
 #define NAK_QUOTA 28
 #define NAK_BACKOFF ((MAX_BUFFER_SIZE+1)/ 2)
 
@@ -75,7 +75,6 @@
 #define ACTIVE 2
 #define DONE_DELIVERING 3
 #define DONE_SENDING 4
-#define COMPLETING 5
 
 /*  MESSAGE TAGS  */
 #define DATA_MSG 'D'
@@ -109,7 +108,7 @@ typedef struct Value {
  *  payload[2] = Data Value
  * 
  * STATUS MESSAGE:
- *  payload[0:MAX_MACHINES-1] = mid
+ *  payload[0:MAX_MACHINES-1] = Message ID of last delivered packet (ACK)
  *  payload[MAX_MACHINES] = Message ID of last packet (if already sent); otherwise -1
  *  payload[MAX_MACHINES+1:MAX_MACHINES*2] = status
  * 
