@@ -14,7 +14,7 @@
 
 
 /*  buffer_init:  creates & returns a pointer to a new, empty buffer  */
-buffer buffer_init ()
+buffer buffer_init (int max)
 {
 	int i;
 	buffer buf;
@@ -23,9 +23,12 @@ buffer buffer_init ()
 	buf.open = 0;
 	buf.offset = 0;
 	buf.upperlimit = 0;
+	buf.maxsize = max;
 	buf.size = 0;
-	for (i=0; i<=MAX_BUFFER_SIZE; i++) {
-		buf.data[i].active = INACTIVE;
+	buf.active = malloc (max * sizeof(int));
+	buf.data = malloc (max * sizeof(Value));
+	for (i=0; i<max; i++) {
+		buf.active[i] = INACTIVE;
 	}
 	return buf;
 }
@@ -34,7 +37,7 @@ buffer buffer_init ()
  *    RETURNS:  true (1) if array is full (minus dummy slot); false (0) if not  */
 int buffer_isFull (buffer * buf)
 {
-	return (buf->size == MAX_BUFFER_SIZE);
+	return (buf->size == buf->maxsize);
 }
 
 /*  isEmpty:  check if array is empty
@@ -56,17 +59,17 @@ int buffer_append (buffer * buf, int lts, int elm)
 	else {
 		val.lts = lts;
 		val.data = elm;
-		val.active = ACTIVE;
+		buf->active[buf->end] = ACTIVE;
 		buf->data[buf->end] = val;
 		buf->size++;
 		buf->upperlimit++;
 		if (buf->open == buf->end) {
 			buf->open += 1;
-			if (buf->open > MAX_BUFFER_SIZE)
+			if (buf->open >= buf->maxsize)
 				buf->open = 0;
 		}
 		buf->end += 1;
-		if (buf->end > MAX_BUFFER_SIZE)
+		if (buf->end >= buf->maxsize)
 			buf->end = 0;
 	}
 	return 1;
@@ -80,9 +83,9 @@ int buffer_append (buffer * buf, int lts, int elm)
  void buffer_clear (buffer * buf, int num)
 {
 	int i, j;
-	i = (buf->start + num) % (MAX_BUFFER_SIZE+1);
+	i = (buf->start + num) % (buf->maxsize);
 	for (j=0; j<num; j++) {
-		buf->data[(buf->start + j) % (MAX_BUFFER_SIZE+1)].active = INACTIVE;
+		buf->active[(buf->start + j) % (buf->maxsize)] = INACTIVE;
 	}
 	buf->start = i;
 	buf->offset += num;
@@ -98,22 +101,25 @@ int buffer_append (buffer * buf, int lts, int elm)
 Value * buffer_get (buffer * buf, int index)
 {
 	if (index > buf->upperlimit)  {
-		printdb("ERROR! Index out of bounds on get %d", index);
+		printerr("ERROR! Index out of bounds on get %d", index);
 		return 0;
 	}
-	return &(buf->data[(buf->start + index - buf->offset) % (MAX_BUFFER_SIZE + 1)]);
+	return &(buf->data[(buf->start + index - buf->offset) % (buf->maxsize)]);
 }
 
 /*
  *  isActive:  Checks to see if the index position is "Active" (in use) */
 int buffer_isActive (buffer * buf, int index)  {
-	Value elm;
 	if (index > buf->upperlimit) {
 		return FALSE;
 	}
-	elm = buf->data[(buf->start + index - buf->offset) % (MAX_BUFFER_SIZE + 1)];
-	return (elm.active == ACTIVE);
+	return (buf->active[(buf->start + index - buf->offset) % (buf->maxsize)] ==  ACTIVE);
 }
+ /*  Special case for checking first element in the buffer */
+int buffer_isStartActive (buffer * buf)  {
+	return (buf->active[buf->start] ==  ACTIVE);
+}
+
 
 
 /*  put: insert operation
@@ -124,40 +130,43 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 {
 	Value val;
 	int local_index;
-	
 	/* Check for Index OOB & return error */
-	if (index > (buf->offset + MAX_BUFFER_SIZE+1)) {
-		printdb("ERROR! Index out of bounds\n");
+	if (index > (buf->offset + buf->maxsize)) {
+		printerr("ERROR! Index out of bounds\n");
 		return -1;
 	}
 
 	/*  Create the data element from input vals  */
 	val.lts = lts;
 	val.data = elm;
-	val.active = ACTIVE;
-	
-	local_index = (buf->start + (index - buf->offset)) % (MAX_BUFFER_SIZE + 1);
-	if (buf->data[local_index].active == INACTIVE) {
+	local_index = (buf->start + (index - buf->offset)) % (buf->maxsize);
+	if (buf->active[local_index] == INACTIVE) {
 		buf->size++;
 	}
 	buf->data[local_index] = val;
+	buf->active[local_index] = ACTIVE;
 	
 	/*  UPDATE "open": If inserting into current open slot, update to next open pos */
 	if (local_index == buf->open)
 	{
 		/*  FIND next open slot  */
-		do  {
-			buf->open++;
-			if (buf->open > MAX_BUFFER_SIZE)
-				buf->open = 0;
-		} while (buf->data[buf->open].active == ACTIVE);
+		if (buf->size == buf->maxsize) {
+			buf->open = buf->start;
+		}
+		else {
+			do  {
+				buf->open++;
+				if (buf->open >= buf->maxsize)
+					buf->open = 0;
+			} while (buf->active[buf->open] == ACTIVE);
+		}
 	}
-	
+
 	/*  UPDATE "end": IF inserting at or beyond current end position */
 	if (index >= buf->upperlimit)  {
 		buf->upperlimit = index;
 		buf->end = local_index + 1;
-		if (buf->end > MAX_BUFFER_SIZE) {
+		if (buf->end >= buf->maxsize) {
 			buf->end = 0;
 		}
 	}
@@ -166,7 +175,7 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 		return (buf->open - buf->start + buf->offset);
 	}
 	else {
-		return (buf->open + MAX_BUFFER_SIZE + 1 - buf->start + buf->offset);
+		return (buf->open + buf->maxsize - buf->start + buf->offset);
 	}
 }
 
@@ -174,17 +183,17 @@ int buffer_put (buffer * buf, int lts, int elm, int index)
 void buffer_print(buffer * buf) {
   int i = buf->offset;
   int j; 
-  for(i = 0; i < MAX_BUFFER_SIZE + 1; i++) {
+  for(i = 0; i < buf->maxsize; i++) {
     printdb("%5d", i + buf->offset); 
   }
   printdb("\n");
 
   j = buf->start;
-  for(i = 0; i < MAX_BUFFER_SIZE+1; i++) {
-    if (j > MAX_BUFFER_SIZE) {
+  for(i = 0; i < buf->maxsize; i++) {
+    if (j >= buf->maxsize) {
       j = 0;
     }
-    if(buf->data[j].active == ACTIVE) {
+    if(buf->active[j] == ACTIVE) {
       printdb("%5d", buf->data[j].lts);
     }
     else {
@@ -199,17 +208,17 @@ void buffer_print(buffer * buf) {
 void buffer_print_select(buffer * buf) {
   int i = buf->offset;
   int j; 
-  for(i = 0; i < MAX_BUFFER_SIZE + 1; i++) {
+  for(i = 0; i < buf->maxsize; i++) {
     printsel("%5d", i + buf->offset); 
   }
   printsel("\n");
 
   j = buf->start;
-  for(i = 0; i < MAX_BUFFER_SIZE+1; i++) {
-    if (j > MAX_BUFFER_SIZE) {
+  for(i = 0; i < buf->maxsize; i++) {
+    if (j >= buf->maxsize) {
       j = 0;
     }
-    if(buf->data[j].active == ACTIVE) {
+    if(buf->active[j] == ACTIVE) {
       printsel("%5d", buf->data[j].lts);
     }
     else {
@@ -234,10 +243,7 @@ int buffer_first_open(buffer * buf) {
 		return (buf->offset + (buf->open - buf->start));
 	}
 	else  {
-		return (buf->offset + (MAX_BUFFER_SIZE + buf->open - buf->start));
+		return (buf->offset + (buf->maxsize + buf->open - buf->start));
 	}
 }
-
-
-
 

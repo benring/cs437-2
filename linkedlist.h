@@ -20,7 +20,16 @@
 
 #define NULL_PTR 0
 
-typedef int generic;
+/*typedef int generic;*/
+
+typedef struct list_elm {
+	int		mid;
+	int		lts;
+	int		dat;
+	int		pid;
+} list_elm;
+
+typedef list_elm generic;
 
 typedef struct element linked_list;
 
@@ -43,7 +52,7 @@ void enq (linked_list ** head, generic val);
 generic deq (linked_list ** head);
 
 
-int search (linked_list * head, generic val);
+int search (linked_list * head, int index);
 
 
 #endif

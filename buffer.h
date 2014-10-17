@@ -30,13 +30,16 @@ typedef struct buffer {
    int open;			/* Internal reference of the first open slot in window */
    int offset;			/* External reference index of the first slot in window */
    int upperlimit;		/* External reference index of the last slot in window */
-   int size;			/* Size of window */
-   Value data[MAX_BUFFER_SIZE+1];  /* window buffer */
+   int maxsize;
+   int size;			/* Current Size of window */
+   int * active;
+   Value * data;
+/*   Value data[MAX_BUFFER_SIZE+1]; */ /* window buffer */ 
 } buffer;
 
 
 /*  buffer_init:  creates & returns a pointer to a new, empty circular array  */
-buffer buffer_init ();
+buffer buffer_init (int max);
 
 
 /*  isFull:  check if array is full
@@ -69,6 +72,7 @@ Value * buffer_get (buffer * buf, int index);
 
 int buffer_isActive (buffer * buf, int index);
 
+int buffer_isStartActive (buffer * buf);
 
 /*  put:  inserts element at given index
  *      NOTE:  Element will be inserted at index RELATIVE to start position

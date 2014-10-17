@@ -34,20 +34,26 @@ int main(int argc, char*argv[])
 	/* Networking vars */
 	struct sockaddr_in    recv_addr;
 	struct sockaddr_in    send_addr;
+	struct sockaddr_in    resend_addr;
+	struct sockaddr_in    from_addr;
+	socklen_t             from_len;
+	int						from_ip;
 	struct ip_mreq			mreq;
 	unsigned char			ttl_val;
-	int                   ss,sr;
+	int                   ss,sr, su;
 	fd_set                mask;
 	fd_set                dummy_mask,temp_mask;
 	int                   bytes;
 	int                 	sock_num;
-	char                	mess_buf[MAX_PACKET_SIZE];
+	char					one_mess[MAX_PACKET_SIZE];
+	char                	mess_buf[MAX_PACKET_SIZE][BATCH_RECEIVE];
 	struct timeval  		timeout;        
 
 	/* Message structs for interpreting bytes */
 	Message         out_msg;
 	Message			*in_msg;
 	Value			*elm;
+	list_elm		packet;
 
 	/* Process's Internal State */
 	int				state;
@@ -58,10 +64,14 @@ int main(int argc, char*argv[])
 	int				nak_count;
 	int 			resend_count;
 	int				receive_count;
+	int				receive_amount;
 	int				send_count;
+	int				send_amount;
+	int				max_send;
 	int				loss_rate;
 	int				all_inactive;
 	int				all_delivered;
+	int				host_list[MAX_MACHINES];
 
 	/*  Outgoing Message State (send)  */
 	buffer			out_buffer;
@@ -69,12 +79,15 @@ int main(int argc, char*argv[])
 	int				msg_count;
 	int				num_packets;
 	int				max_ack[MAX_MACHINES];
+	int				max_delivered[MAX_MACHINES];
 	int				last_nak[MAX_MACHINES];
 	int				last_nak_count[MAX_MACHINES];
 	int				this_nak;
 
 	/*  All Message State (receive)  */
 	buffer			message_buffer[MAX_MACHINES];
+	linked_list *   overflow[MAX_MACHINES];
+	int 			overflow_size[MAX_MACHINES];
 	int				max_mid[MAX_MACHINES];
 	int				max_lts[MAX_MACHINES];
 	int				last_message[MAX_MACHINES];
@@ -95,13 +108,19 @@ int main(int argc, char*argv[])
 	int				cur_minlts;
 	int				cur_minpid;
 	int				cur_minmid;
+	int				cur_maxack;
+	int				cur_maxdel;
+	int				num_naks;
+	int				my_nakpos;
 	int				sequence_num;
+	int				store_count;
 	int				display_count;
 	int 			display_interval;
 	struct timeval  start_t;
 	struct timeval  end_t;
 
 	/*   Optimization vars  */
+	int				store;
 	int				dup;
 	int				old;
 	int				resend;
@@ -112,6 +131,8 @@ int main(int argc, char*argv[])
 	long			totime;
 	long			waitrecvtime;
 	int				numnak;
+	int				naktrig;
+	int				naksent;
 	int				lessfull;
 	int				morefull;
 	struct timeval  d1;
@@ -157,6 +178,7 @@ int main(int argc, char*argv[])
 	recv_addr.sin_family = AF_INET;
 	recv_addr.sin_addr.s_addr = INADDR_ANY;
 	recv_addr.sin_port = htons(PORT);
+	from_len = sizeof(from_addr);
 	if ( bind( sr, (struct sockaddr *)&recv_addr, sizeof(recv_addr) ) < 0 ) {
 		perror("Mcast: bind");
 		exit(1);
@@ -177,15 +199,24 @@ int main(int argc, char*argv[])
 		perror("Mcast: socket");
 		exit(1);
 	}
-
 	if (setsockopt(ss, IPPROTO_IP, IP_MULTICAST_TTL, 
 		(void *)&ttl_val, sizeof(ttl_val)) < 0)  {
 			perror("Mcast: problem with setting sending sock option");
 		}
-
 	send_addr.sin_family = AF_INET;
 	send_addr.sin_addr.s_addr = htonl(MCAST_ADDR);
 	send_addr.sin_port = htons(PORT);
+
+	/*  Set up Unicast Socket for re-sending data packets */
+		/* Open socket for sending */
+	su = socket(AF_INET, SOCK_DGRAM, 0); /* socket for sending (udp) */
+	if (su<0) {
+		perror("Ucast: socket");
+		exit(1);
+	}
+
+	resend_addr.sin_family = AF_INET;
+	resend_addr.sin_port = htons(PORT);
 
 	FD_ZERO( &mask );
 	FD_ZERO( &dummy_mask );
@@ -198,29 +229,37 @@ int main(int argc, char*argv[])
 	deliver_lts = -1;
 	have_sent = -1;
 	msg_count = 0;
-	receive_count = 0;
 	status_count = 0;
 	nak_count = 0;
 	resend_count = 0;
 	out_msg.pid = me;
-	out_buffer = buffer_init();
+	send_amount = me;
+	receive_count = 0;
+	receive_amount = num_machines - me;
+	out_buffer = buffer_init(2*(MAX_BUFFER_SIZE));
 	display_interval = num_packets / 10;
 	display_count = display_interval;
+	store_count = display_interval;
 	cur_minpid = 0;
+
 	
 	for (index=0; index < MAX_MACHINES; index++) {
 		max_mid[index] = -1;
 		max_lts[index] = -1;
 		max_ack[index] = -1;
+		max_delivered[index] = -1;
 		last_nak[index] = 0;
 		last_nak_count[index] = 0;
-		message_buffer[index] = buffer_init();
+		message_buffer[index] = buffer_init(MAX_BUFFER_SIZE);
 		sending[index] = UNKNOWN;
 		last_message[index] = -1;
+		overflow_size[index] = 0;
+		host_list[index] = 0;
 	}
 
 	/*  Initialize Optimization Variables  */
 	dup=0;
+	store=0;
 	resend=0;
 	oob=0;
 	naklast=0;
@@ -230,6 +269,8 @@ int main(int argc, char*argv[])
 	full=0;
 	old=0;
 	numnak=0;
+	naktrig=0;
+	naksent=0;
 	morefull=0;
 	lessfull=0;
 
@@ -253,7 +294,7 @@ int main(int argc, char*argv[])
 	printinfo("			Loss =  %4d%%\n\n", loss_rate);
 	
 
-	for(loop=0; loop<9000000; loop++) {  
+	for(loop=0; loop<10000000; loop++) {  
 		/*==========================================================
 		 * (1)  SEND STATE Algorithm Implementation
 		 *==========================================================*/
@@ -270,8 +311,9 @@ int main(int argc, char*argv[])
 				status_count = 0;
 				out_msg.tag = STATUS_MSG;
 				for (index=0; index<MAX_MACHINES; index++) {
-					out_msg.payload[index] = max_mid[index];
+					out_msg.payload[index] = buffer_first_open(&message_buffer[index])-1;
 					out_msg.payload[1+index+MAX_MACHINES] = sending[index];
+					out_msg.payload[1+index+(2*MAX_MACHINES)] = message_buffer[index].offset-1;
 				}
 				if (have_sent >= num_packets-1)  {
 					printdb("I've DELIVERED my last packet. # Packet status is now %d\n", have_sent);
@@ -281,7 +323,6 @@ int main(int argc, char*argv[])
 					out_msg.payload[MAX_MACHINES] = -1;
 				}
 				printdb("SENDING STATUS Msg: Max-Mid= ");
-				printarray(max_mid, num_machines);
 				sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 					   (struct sockaddr *)&send_addr, sizeof(send_addr));
 			}
@@ -290,6 +331,7 @@ int main(int argc, char*argv[])
 			 *   SEND NAK Message
 			 *****************************************/
 			if (nak_count >= NAK_TRIGGER)  {
+				naktrig++;
 				gettimeofday(&d1, NULL);
 				printsel("NAK TRIGGERED!  BUILD NAK: ");
 				nak_count = 0;
@@ -298,6 +340,35 @@ int main(int argc, char*argv[])
 				/*---------------------------------------
 				 *  NAK HEURISTIC ALGORITHM            
 				 *---------------------------------------*/
+				/*  CHECK: Overflow buffer  */
+				for (index=0; index<num_machines; index++)  { 
+					if ((index == me) || (overflow_size[index] == 0))  {
+						continue;
+					} 
+					printdb("CHECK overflow on %d: ", index);
+					for (i=0; i<overflow_size[index]; i++)  {
+						packet = deq(&overflow[index]);
+						printdb("%d", packet.mid);
+						if (packet.mid > (message_buffer[index].offset + MAX_BUFFER_SIZE))  {
+							enq(&overflow[index], packet);
+							printdb("-enq ");
+						}
+						else  {
+							printdb("-put ");
+							overflow_size[index]--;
+							sequence_num = (buffer_put (&message_buffer[index], packet.lts, packet.dat, packet.mid)) - 1;
+							if (sequence_num >= 0)  {
+								elm = buffer_get(&message_buffer[index], sequence_num);
+								max_lts[index] = elm->lts;
+							}
+						}
+						printdb("\n");
+
+					}
+				}
+			
+				 
+				 
 				for(index = 0; index < num_machines; index++) {
 				  out_msg.payload[index*NAK_QUOTA] = 0;
 				  if ((index == me) || (sending[index] == INACTIVE)) {
@@ -345,13 +416,12 @@ int main(int argc, char*argv[])
 					printsel("]");
 				}
 				printsel("\n");
-				if (SEL_DEBUG > 0)  {
-					print_buffers_select(message_buffer, num_machines);
-				}
+				print_buffers_select(message_buffer, num_machines);
 				/*  SEND NAK MESSAGE  */
 				if (nak_count > 0)  {
 					printdb("SENDING NAK for %d lost messages!\n", nak_count); 
 					numnak+=nak_count;
+					naksent++;
 					sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 					   (struct sockaddr *)&send_addr, sizeof(send_addr));
 				}
@@ -366,14 +436,30 @@ int main(int argc, char*argv[])
 			if (sending[me] != INACTIVE)  {
 				out_msg.tag = DATA_MSG;
 				
-				send_count = (out_buffer.size < (MAX_BUFFER_SIZE / 2)) ?
-					msg_count + (MAX_BUFFER_SIZE) :
-					msg_count + BATCH_SEND;
+				cur_maxdel = get_min(max_delivered, num_machines);
+				cur_maxack = msg_count+1;
+				for (index = 0; index < num_machines; index++)  {
+					if (index == me)  {
+						continue;
+					}
+					if ((max_ack[index] > -1) && (max_ack[index] < cur_maxack))  {
+						cur_maxack = max_ack[index];
+					}
+				}
+				if ((cur_maxack - cur_maxdel) > MAX_BUFFER_SIZE) {
+					send_count = msg_count + 1;
+				}
+				else {
+					send_count = msg_count + BATCH_SEND;
+				}
+				max_send = cur_maxdel + MAX_BUFFER_SIZE; 
 				
-				printdb("Highest possible send:  %d   \n", (out_buffer.offset + MAX_BUFFER_SIZE));
+				printdb("Highest possible send:  %d   \n", send_count);
 				while ( (msg_count < num_packets) &&
-						(msg_count < send_count)  &&
-						(!buffer_isFull(&out_buffer)) ) {
+/*						(msg_count < send_count)  &&     */
+						(msg_count < max_send)  &&
+						(!buffer_isFull(&out_buffer)) &&
+						(!buffer_isFull(&message_buffer[me]))) {
 					lts++;
 					printdb("Sending DATA MSG #%d   (LTS=%d)\n", msg_count, lts);
 
@@ -386,15 +472,21 @@ int main(int argc, char*argv[])
 					out_msg.payload[2] = (rand() % 999999) + 1;
 				
 					max_lts[me] = lts;
+					max_ack[me]++;
+					
 					buffer_append(&message_buffer[me], out_msg.payload[1], out_msg.payload[2]);
 					buffer_append(&out_buffer, out_msg.payload[1], out_msg.payload[2]);
 					sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 						   (struct sockaddr *)&send_addr, sizeof(send_addr));
 					have_sent++;
+					if (msg_count == num_packets)  {
+						last_message[me] = msg_count-1;
+					}
 					if (msg_count == display_count) {
 						display_count += display_interval;
 						printinfo("  Sent %7d Messages.\n", msg_count);
 					}
+					
 				}
 
 				/******************************************
@@ -403,7 +495,8 @@ int main(int argc, char*argv[])
 				if (resend_count >= RESEND_TRIGGER)  {
 					resend_count = 0;
 					while(!isEmpty(lost_packets)) {
-					  index = deq(&lost_packets);
+					  packet = deq(&lost_packets);
+					  index = packet.mid;
 					  printdb("NEED to RE-SEND %d: ", index);
 					  /* Ensure packet is is my window  */
 					  if ((index >= out_buffer.offset) && (index <= out_buffer.upperlimit) ) {
@@ -414,8 +507,15 @@ int main(int argc, char*argv[])
 						out_msg.payload[1] = elm->lts;
 						out_msg.payload[2] = elm->data;
 						printdb("Re-Sending DATA MSG #%d   (LTS=%d)\n", index, elm->lts);
-						sendto(ss,(char *) &out_msg, sizeof(Message), 0,
+						resend_addr.sin_addr.s_addr = host_list[packet.pid];
+
+						/*  Re-send mutli-cast  */
+/*						sendto(ss,(char *) &out_msg, sizeof(Message), 0,
 							   (struct sockaddr *)&send_addr, sizeof(send_addr));
+*/							
+						/*  Re-send uni-cast  */
+						sendto(su,(char *) &out_msg, sizeof(Message), 0,
+							   (struct sockaddr *)&resend_addr, sizeof(resend_addr));
 						resend++;
 						}
 					}
@@ -427,7 +527,7 @@ int main(int argc, char*argv[])
 		/*==========================================================
 		 * 	  (2) Listen to Socket & Receive Data (or timeout)
 		 *==========================================================*/
-		 
+		 { 
 		/*  reset default timeout & mask vals  */
 		temp_mask = mask;
 		
@@ -445,46 +545,65 @@ int main(int argc, char*argv[])
 		}
 
 		/*  Receive Data  */
-		sock_num = select(FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
-		if ((sock_num > 0) && (FD_ISSET(sr, &temp_mask))) { 
-			bytes = (state == IDLE) ?
-				recv(sr, mess_buf, sizeof(mess_buf), 0) :
-				recv_dbg(sr, mess_buf, sizeof(mess_buf), 0);
-			if (state != IDLE)  {
-				waitrecvtime += (TIMEOUT_RECV - timeout.tv_usec);
+		if (receive_count == 0)  {
+			sock_num = select(FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
+			if ((sock_num > 0) && (FD_ISSET(sr, &temp_mask))) { 
+				if (state != IDLE)  {
+					waitrecvtime += (TIMEOUT_RECV - timeout.tv_usec);
+				}
+				receive_amount = (state == IDLE) ?
+					recv(sr, mess_buf, sizeof(mess_buf), 0) :
+					recvfrom_dbg(sr, mess_buf, sizeof(mess_buf), 0, &from_addr, &from_len);
+				from_ip = from_addr.sin_addr.s_addr;
+	/*				recv_dbg(sr, mess_buf, sizeof(mess_buf), 0);   */
+	/*				recv_dbg(sr, one_mess, sizeof(one_mess), 0);   */
+
+				if (receive_amount == 0) {
+				  printdb("DROPPED A PACKET\n");
+				  continue;
+				}
+/*				printinfo("# packets Received: %d\n", receive_amount);   */
+				receive_count = 0;
+			} else if (sock_num == 0) {
+				receive_count = 0;
+				if (state != IDLE)  {
+					totime += (TIMEOUT_RECV - timeout.tv_usec);
+				}
+				to++;
+				
+				/*  On Timeout: Accelerate sending of NAK & STATUS Messages  */
+				status_count += TRIGGER_ACCELERATOR;  
+				nak_count    += TRIGGER_ACCELERATOR;   
+				if (state == RECV)  {
+					state = SEND;			
+				}
+				printdb("timed_out when trying to receive\n");
+				continue;
+			} else {
+				printerr(" ERROR! SOCK NUM %d", sock_num);
+				exit(0);
 			}
-			if (bytes == 0) {
-			  printdb("DROPPED A PACKET\n");
-			  continue;
-			}
-			in_msg = (Message *) mess_buf;
-			receive_count++;
-		} else if (sock_num == 0) {
-			if (state != IDLE)  {
-				totime += (TIMEOUT_RECV - timeout.tv_usec);
-			}
-			to++;
-			
-			/*  On Timeout: Accelerate sending of NAK & STATUS Messages  */
-			status_count += (STATUS_TRIGGER / TRIGGER_DIVISOR);  
-			nak_count    += (NAK_TRIGGER / TRIGGER_DIVISOR);   
-			if (state == RECV)  {
-				state = SEND;			
-			}
-			printdb("timed_out when trying to receive\n");
-			continue;
-		} else {
-			printf(" SOCK NUM %d", sock_num);
-			exit(0);
 		}
 
+		in_msg = (Message *) &(mess_buf[receive_count]);
+/*		printinfo("RECV AMT= %d, CNT=%d\n", receive_amount, receive_count);  */
+		receive_count += MAX_PACKET_SIZE;
 		from_pid = in_msg->pid;
+
+		if ((from_ip != 0) && (host_list[from_pid] == 0)) {
+			host_list[from_pid] = from_ip;
+			printdb("NEW IP: pid=%d, ip=%d\n", from_pid, host_list[from_pid]);
+		}
 		
 		/*  Ignore my messages  */
 		if (from_pid == me)  {
+			if (receive_count >= receive_amount) {
+				receive_count = 0;
+				state = SEND;
+			}
 			continue;
 		}
-
+		 }
 		
 		/*==========================================================
 		 * (3)  RECV STATE Algorithm Implementation
@@ -525,13 +644,19 @@ int main(int argc, char*argv[])
 						printdb("RECEIVED AN OLD PACKET\n");
 						old++;
 					}
-					/*  CHECK: INDEX OOB  */
-					else if (in_msg->payload[0] > (message_buffer[from_pid].offset + MAX_BUFFER_SIZE)) {
-						printdb("******Ignoring Message due to lack of buffer size on %d ******\n", from_pid);
+					/*  CHECK: INDEX OOB; place in OVERFLOW buffer */
+					else if (in_msg->payload[0] >= (message_buffer[from_pid].offset + MAX_BUFFER_SIZE)) {
+						packet.mid = in_msg->payload[0];
+						packet.lts = in_msg->payload[1];
+						packet.dat = in_msg->payload[2];
+						enq(&overflow[from_pid], packet); 
+						overflow_size[from_pid]++;
+						printdb("******OVERFLOWING Message due to lack of buffer size on %d ******\n", from_pid);
 						oob++;
 					}
 					else {
 						sequence_num = (buffer_put (&message_buffer[from_pid], in_msg->payload[1], in_msg->payload[2], in_msg->payload[0])) - 1;
+						printdb(" FIRST OPEN IS: %d\n", sequence_num);
 
 						/*  SET: track LTS associated with that message ID */
 						if (sequence_num >= 0)  {
@@ -539,6 +664,12 @@ int main(int argc, char*argv[])
 							max_lts[from_pid] = elm->lts;
 						}
 						print_buffers(message_buffer, num_machines);
+/*						store++;
+						if (store == store_count) {
+							store_count += display_interval;
+							printinfo("  Stored %7d Messages.\n", store);
+						}
+*/
 					}
 				
 				break;
@@ -558,6 +689,10 @@ int main(int argc, char*argv[])
 				/* TODO:  CHECK IF I AM NOT INACTIVE  */
 				if (in_msg->payload[me] > max_ack[from_pid])  {
 					max_ack[from_pid] = in_msg->payload[me];
+				}
+				
+				if (in_msg->payload[1+(2*MAX_MACHINES)+me] > max_delivered[from_pid]) {
+					max_delivered[from_pid] = in_msg->payload[1+(2*MAX_MACHINES)+me];
 				}
 				
 				cur_minmid = get_min(max_ack, num_machines);
@@ -580,50 +715,16 @@ int main(int argc, char*argv[])
 						printdb(" TO A BAD STATE");
 						exit(0);
 					}
-					max_mid[me] = -1;
+					/*  CHANGE max_mid to max_ack  */
+					max_ack[me] = -1;
 				}
 				
 				/*  UPDATE: Last Message Count from this PID, if provided  */
 				last_message[from_pid] = in_msg->payload[MAX_MACHINES];
 				
-				/* CHECK:  Do I have all the packets this pid sends? */
-				if ((last_message[from_pid] >= 0) && (message_buffer[from_pid].offset > last_message[from_pid])) {
-					printdb("Have received ALL packets from pid %d thru %d", from_pid, in_msg->payload[MAX_MACHINES]);
-					max_lts[from_pid] = -1;
-				}
 				printstatuses(sending, num_machines);
 
 
-				/*  CHECK: Have I delivered all messages?? */
-				printdb("CHECK ALL DELIVERED. Last messages: ");
-				printarray(last_message, num_machines);
-				all_delivered = TRUE;
-				for (index=0; index<MAX_MACHINES; index++) {
-					if (((sending[index] == ACTIVE) && (last_message[index] < 0)) ||
-						((last_message[index] >= 0) && (message_buffer[index].offset < last_message[index])))  { 
-						printdb(" Seems %d is not done delivering", index);
-						all_delivered = FALSE;
-						break;
-					}
-				}
-				printdb("\n");
-				/*  IF: I have delivered all message move out of Active State */
-				if (all_delivered)  {
-					printstatuses(sending, num_machines);
-					printdb("ALL DELIVERED  -----  GOING ");
-					if ((sending[me] == ACTIVE) || (sending[me] == DONE_DELIVERING))  {
-						printdb("... DONE_DELIVERING\n");
-						sending[me] = DONE_DELIVERING;
-					}
-					else if ((sending[me] == DONE_SENDING) || (sending[me] == INACTIVE))  {
-						printdb("... INACTIVE\n");
-						sending[me] = INACTIVE;
-					}
-					else {
-						printdb(" to a BAD STATE");
-						exit(0);
-					}
-				}
 				
 				/* STATUS CHECK:  Has everyone completed sending messages  */
 				all_inactive = TRUE;
@@ -650,88 +751,134 @@ int main(int argc, char*argv[])
 				/****************************************************
 				 *  DELIVERY ALGORITHM 
 				 *****************************************************/
-				/*  CHECK LTS for message delivery  */
-				printdb(" MAX LTS=");
-				printarray(max_lts, num_machines);
-
+				/*  FIND the highest possible LTS for message delivery  */
 				deliver_lts = 10000000;
-				printstatuses(sending, num_machines);
-				for (index = 0; index < num_machines; index++)  {
-					if (message_buffer[index].size > (MAX_BUFFER_SIZE / 2)) {
-						morefull++;
-					}
-					else {
-						lessfull++;
-					}
-					if (sending[index] == UNKNOWN)  {
-						printdb("UNKNOWN STATUS FROM pid-%d\n", index);
-						deliver_lts = -1;
-						break;
-					}
-					if ((sending[index] == ACTIVE) && (max_lts[index] < 0))  {
-						printdb("DETECTED ACTIVE STATE, but have not received any data yet from pid %d\n", index);
-						deliver_lts = -1;
-						break;
-					}
-					if ((max_lts[index] < deliver_lts) && (max_lts[index] >= 0))  {
+				for (index = 0; index < num_machines; index++) {
+					if ((max_lts[index] >= 0) && (max_lts[index] < deliver_lts))  {
 						deliver_lts = max_lts[index];
-						printdb("Check DELIVER thru LTS: %d (this active pid=%d)\n", deliver_lts, index);
 					}
 				}
+				printdb("\n GO-Deliver to %d.  MAX LTS=", deliver_lts);
+				printarray(max_lts, num_machines);
+				printdb("\n Last Messages  =");
+				printarray(last_message, num_machines);
 
-				if ((deliver_lts >= 0) && (deliver_lts < 10000000))  {
+				if ((deliver_lts >= 0) && (deliver_lts < 10000000))  {  
 					while (TRUE)  {
 						cur_minlts = 10000000;
 						for (index=0; index <num_machines; index++)  {
 							if (max_lts[index] < 0)  {
+								printdb("pid %d max lts is -1\n", index);
 								continue;
 							}
 							if (buffer_isEmpty(&message_buffer[index]))  {
+								printdb("pid %d buffer is empty\n", index);
 								continue;
 							}
+							if (!buffer_isStartActive(&message_buffer[index])) {
+								printdb("pid %d buffer start inactive\n", index);
+								continue;
+							} 
 							elm = buffer_get(&message_buffer[index], message_buffer[index].offset);
-							
-							if ((elm->lts < cur_minlts) && (elm->lts >= 0) && (elm->active == ACTIVE)) {
+							if ((elm->lts < cur_minlts) && (elm->lts >= 0)) {
 								cur_minlts = elm->lts;
 								cur_minpid = index;
-								/*printdb("WILL TRY TO DELIVER LTS: %d, PID: %d\n", cur_minlts, cur_minpid); */
+								printdb("WILL TRY TO DELIVER LTS: %d, PID: %d\n", cur_minlts, cur_minpid);
 							}
 						}
+						printdb(" minlts=%d\tdel_lts=%d\n", cur_minlts, deliver_lts);
 						if (cur_minlts <= deliver_lts)  {
 							printdb("DELIVERING:  LTS=%d,PID=%d\n", cur_minlts, cur_minpid);
+							if (cur_minpid == me)  {
+								max_delivered[me] = message_buffer[me].offset;
+							}
 							/*  WRITE HERE  */
 							elm = buffer_get(&message_buffer[cur_minpid], message_buffer[cur_minpid].offset);
 							fprintf(sink, "%2d, %8d, %8d\n", cur_minpid+1, message_buffer[cur_minpid].offset, elm->data);
-	
-							/*  Set MAX_MID to what you are about to deliver  */
-							printdb("MaxMid Array = "); printarray(max_mid, num_machines);
-							max_mid[cur_minpid] = message_buffer[cur_minpid].offset;
-							printdb("MaxMid Array = "); printarray(max_mid, num_machines);
 							buffer_clear(&message_buffer[cur_minpid], 1);
-							
-							/*  Special cases for delivering your own packets  */
-							if (cur_minpid == me) {
-							/*  If you have delivered your last message, reset your max-mid to -1  */
-								max_ack[me]++;
-								if (max_mid[me] >= num_packets-1) {
-									printdb(" ----  DELIVERED MY OWN LAST PACKET -- Resetting LTS to -1\n");
-/*									sending[me] = DONE_DELIVERING;  */
-									max_lts[me] = -1; 
-								}
-								else {
-									max_mid[me] = message_buffer[me].offset;
-								}
-							}
-						}
+					}
 						else  {
 							break;
 						}
 					}
-					printstatuses(sending, num_machines);
-					print_buffers(message_buffer, num_machines);
+					
+					/* CHECK: Have I delivered all messages for PIDs?  */
+					for (index=0; index<MAX_MACHINES; index++) {
+/*						printdb("CHECK last deliver:  lm=%d,   off=%d", last_message[index], message_buffer[index].offset); */
+						if ((last_message[index] >= 0) && (message_buffer[index].offset > last_message[index])) {
+							printdb(" ----  DELIVERED LAST PACKET FOR PID %d -- Resetting LTS to -1\n", index);
+							max_lts[index] = -1;  
+						}
+					}
+					
+					/*  CHECK: Have I delivered all messages?? */
+					printdb("CHECK ALL DELIVERED. Last messages: ");
+					printarray(last_message, num_machines);
+					all_delivered = TRUE;
+					for (index=0; index<MAX_MACHINES; index++) {
+						if (((sending[index] == ACTIVE) && (last_message[index] < 0)) ||
+							((last_message[index] >= 0) && (message_buffer[index].offset < last_message[index])))  { 
+							printdb(" Seems %d is not done delivering", index);
+							all_delivered = FALSE;
+							break;
+						}
+					}
+
+					printdb("\n");
+					/*  IF: I have delivered all message move out of Active State */
+					if (all_delivered)  {
+						printstatuses(sending, num_machines);
+						printdb("ALL DELIVERED  -----  GOING ");
+						if ((sending[me] == ACTIVE) || (sending[me] == DONE_DELIVERING))  {
+							printdb("... DONE_DELIVERING\n");
+							sending[me] = DONE_DELIVERING;
+						}
+						else if ((sending[me] == DONE_SENDING) || (sending[me] == INACTIVE))  {
+							printdb("... INACTIVE\n");
+							sending[me] = INACTIVE;
+						}
+						else {
+							printdb(" to a BAD STATE");
+							exit(0);
+						}
+					}
+
+
+					/*  CHECK: Overflow buffer  */
+					for (index=0; index<num_machines; index++)  {
+						if ((index == me) || (overflow_size[index] == 0))  {
+							continue;
+						} 
+						printdb("CHECK overflow on %d: ", index);
+						for (i=0; i<overflow_size[index]; i++)  {
+							packet = deq(&overflow[index]);
+							printdb("%d", packet.mid);
+							if (packet.mid > (message_buffer[index].offset + MAX_BUFFER_SIZE))  {
+								enq(&overflow[index], packet);
+								printdb("-enq ");
+							}
+							else  {
+								printdb("-put ");
+								overflow_size[index]--;
+								sequence_num = (buffer_put (&message_buffer[index], packet.lts, packet.dat, packet.mid)) - 1;
+								if (sequence_num >= 0)  {
+									elm = buffer_get(&message_buffer[index], sequence_num);
+									max_lts[index] = elm->lts;
+								}
+							}
+/*							if (isEmpty(overflow[index])) {
+								printdb("\n");
+								break;
+							}
+*/							printdb("\n");
+
+						}
+					}
 				}
 				/*===========  END of DELIVERY ALGORITYM  ================*/
 				
+				printstatuses(sending, num_machines);
+				print_buffers(message_buffer, num_machines);
 				gettimeofday(&d2, NULL);
 				ddiff += time_diff(d1, d2);
 				break;
@@ -744,26 +891,25 @@ int main(int argc, char*argv[])
 				/*  Update LOST msg queue  */
 				gettimeofday(&d1, NULL);
 				printdb("------Received NAK from %d for: ", from_pid);
-				index = me*NAK_QUOTA;
-				i = 1;
-				while (i <= in_msg->payload[index])  {
-					j = in_msg->payload[index + i];
-					i++;
-					printdb(" Msg#%d", j);
-					if (j >= out_buffer.upperlimit) {
-						printdb("<Ignore%d >= %d>", j, out_buffer.upperlimit);
+				my_nakpos = me*NAK_QUOTA;
+				num_naks = in_msg->payload[me*NAK_QUOTA];
+				for (i=1; i <= num_naks; i++ ) {
+					index = in_msg->payload[my_nakpos+i];
+					printdb(" Msg#%d", index);
+					if ((index < out_buffer.offset) || (index >= out_buffer.upperlimit)) {
+						printdb("<Ignore%d >= %d>", index, out_buffer.upperlimit);
 					}
 					else {
 						printdb("<Enq>");
-						if (search(lost_packets, j) == FALSE) {
-							enq(&lost_packets, j);
-						}
+						packet.pid = from_pid;
+						packet.mid = index;
+						enq(&lost_packets, packet);
 					}
 				}
+
 				printdb("\n");
 				gettimeofday(&d2, NULL);
 				naksenddiff+= time_diff(d1, d2);
-
 				break;
 			
 			/****************************************************
@@ -782,16 +928,29 @@ int main(int argc, char*argv[])
 		if (state == KILL)  {
 			break;
 		}
-		if (receive_count >= BATCH_RECEIVE) {
-			state = SEND;
+		if (receive_count >= receive_amount) {
 			receive_count = 0;
+			state = SEND;
 		}
 
 	} 
 	fclose(sink);
 	
 	if (state != KILL)  {
-		printdb("Program ended prematurely\n");
+		printerr("Program ended prematurely\n");
+		printerr(" %-20s%6d\n", "MSG Count:",msg_count);
+		printerr(" %-20s%6d\n", "Status:",sending[me]);		
+		printinfo("%-20s%6d\n", " Duplicate Packets:", dup);
+		printinfo("%-20s%6d\n", " Old Packets:", old);
+		printinfo("%-20s%6d\n", " Index OOB:", oob);
+		printinfo("%-20s%6d\n", " Resent Packets:", resend);
+		printinfo("%-20s%6d\n", " Last NAK Case:", naklast);
+		printinfo("%-20s%6d\n", " NAKs Triggered:", naktrig);
+		printinfo("%-20s%6d\n", " NAK  Msgs Sent:", naksent);
+		printinfo("%-20s%6d\n", " NAKs Requested:", numnak);
+		printinfo("%-20s%6d\n", " # Timeouts:", to);
+		printinfo("%-20s%6ld msec\n", " Time Wait & Timeout:", totime/1000);
+		printinfo("%-20s%6ld msec\n", " Time Wait & Receiving:", waitrecvtime/1000);
 		return(1);
 	}
 	else {
@@ -805,16 +964,18 @@ int main(int argc, char*argv[])
 		printinfo("%-25s%8d\n", " Full Buffer:", full);
 		printinfo("%-25s%8d\n", " Resent Packets:", resend);
 		printinfo("%-25s%8d\n", " Last NAK Case:", naklast);
+		printinfo("%-25s%8d\n", " NAKs Triggered:", naktrig);
+		printinfo("%-25s%8d\n", " NAKs Msgs Sent:", naksent);
 		printinfo("%-25s%8d\n", " NAKs Requested:", numnak);
 		printinfo("%-25s%8d (%2.1f%%)\n", " More Full Buffers:", morefull, (((float)morefull*100)/(morefull+lessfull)));
 		printinfo("%-25s%8d (%2.1f%%)\n", " Less Full Buffers:", lessfull, (((float)lessfull*100)/(morefull+lessfull)));
 		printinfo("%-25s%8d\n", " # Timeouts:", to);
 		printinfo("%-25s%8ld msec\n", " Time Wait & Timeout:", totime/1000);
 		printinfo("%-25s%8ld msec\n", " Time Wait & Receiving:", waitrecvtime/1000);
-		printinfo("Status Msg Proc Time:   %2.3f secs\n", ddiff); 
-		printinfo("NAK-Send Proc Time:   %2.3f secs\n", naksenddiff); 
-		printinfo("NAK-Recv Proc Time:   %2.3f secs\n", nakrecvdiff); 
-		printinfo("TOTAL TIME:   %2.2f secs\n\n", time_diff(start_t, end_t)); /*.tv_usec - start_t.tv_usec)/10000);*/
+		printinfo("Status Msg Proc Time:   \t%2.3f secs\n", ddiff); 
+		printinfo("NAK-Send Proc Time:     \t%2.3f secs\n", naksenddiff); 
+		printinfo("NAK-Recv Proc Time:     \t%2.3f secs\n\n", nakrecvdiff); 
+		printinfo("TOTAL TIME:	\t%2.2f secs\n\n", time_diff(start_t, end_t)); /*.tv_usec - start_t.tv_usec)/10000);*/
 
 	/*  RE-SEND KILL Message N-Times  */
 		for (index = 0; index < num_machines; index++)  {

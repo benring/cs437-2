@@ -1,6 +1,7 @@
 #ifndef	CONFIG_H
 #define CONFIG_H
 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,8 +18,7 @@
 
 /*  COMMENT OUT FOLLOWING LINE TO REMOVE DEBUGGING */
 /*#define DEBUG 1  */
-
-#ifdef  DEBUG 
+#ifdef  DEBUG
 #define printdb(args...) printf(args);
 #else
 #define printdb(args...)
@@ -31,8 +31,19 @@
 #define printinfo(args...)
 #endif
 
-#define SEL_DEBUG 0
+#define ERR 1 
+#ifdef  ERR
+#define printerr(args...) printf(args);
+#else
+#define printerr(args...)
+#endif
+
+/*#define SEL_DEBUG 0 */
+#ifdef  SEL_DEBUG
 #define printsel(args...) if (SEL_DEBUG > 0) printf(args)
+#else
+#define printsel(args...)
+#endif
 
 
 #define NUM_PACKET_DEBUG 5000
@@ -48,19 +59,27 @@
 #define PORT 10140
 
 /* Discretionary Declarations */
+#define MAX_BUFFER_SIZE 32
+#define BATCH_SEND 2
+#define BATCH_RECEIVE 1
+#define STATUS_TRIGGER 128
+#define NAK_TRIGGER 256
+#define RESEND_TRIGGER 20
+#define TRIGGER_ACCELERATOR 32
+#define NAK_QUOTA 29
+#define NAK_BACKOFF 16
+
+/* Discretionary Declarations
 #define MAX_BUFFER_SIZE 127
 #define BATCH_SEND 1
 #define BATCH_RECEIVE 8
 #define STATUS_TRIGGER 64
-#define NAK_TRIGGER 1024
-#define RESEND_TRIGGER 32
-#define TRIGGER_DIVISOR 64
-#define NAK_QUOTA 28
-#define NAK_BACKOFF ((MAX_BUFFER_SIZE+1)/ 2)
+#define NAK_TRIGGER 1024  */
+
 
 /* Timeouts  */
-#define TIMEOUT_IDLE 60
-#define TIMEOUT_RECV 150
+#define TIMEOUT_IDLE 60   /* sec  */
+#define TIMEOUT_RECV 50   /* usec */
 
 /*  Process States  */
 #define IDLE 0
@@ -70,8 +89,8 @@
 #define KILL 4
 
 /* Sending States */
-#define UNKNOWN 0
-#define INACTIVE 1
+#define INACTIVE 0
+#define UNKNOWN 1
 #define ACTIVE 2
 #define DONE_DELIVERING 3
 #define DONE_SENDING 4
@@ -96,7 +115,7 @@ typedef struct Message {
 
 
 typedef struct Value {
-	int active;
+/*	int active; */
 	int lts;
 	int data;
 } Value;

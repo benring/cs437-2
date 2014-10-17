@@ -55,8 +55,17 @@ generic deq (linked_list ** head)  {
 
 /*  search:  Simple linear search to find given val (O(n) log op)
  *          RETURN:  1 if found, 0 if not found  */
-int search (linked_list * head, generic val)  {
-    return 0;
+int search (linked_list * head, int index)  {
+    generic val;
+	linked_list *ptr = head;
+	while (ptr != NULL_PTR) {
+		val = ptr->data;
+		if (val.mid == index) {
+			return 1;
+		}
+		ptr = ptr->next;
+	}
+	return 0;
 }
 
 
