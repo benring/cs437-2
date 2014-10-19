@@ -49,19 +49,19 @@
 
 /* Discretionary Declarations */
 #define MAX_BUFFER_SIZE 512
-#define SEND_BUFFER_SIZE 50
-#define BATCH_SEND 10
-#define BATCH_RECEIVE 20
-#define STATUS_TRIGGER 10
-#define NAK_TRIGGER 20
+#define SEND_BUFFER_SIZE 10
+#define MIN_SEND_SIZE 1
+#define BATCH_RECEIVE 8
+#define STATUS_TRIGGER 2000
+#define NAK_TRIGGER 10000
 #define RESEND_TRIGGER 1
 #define TRIGGER_DIVISOR 2
 #define NAK_QUOTA 5
-#define NAK_BACKOFF ((SEND_BUFFER_SIZE+1)/ 2)
+#define NAK_BACKOFF (SEND_BUFFER_SIZE/ 2)
 
 /* Timeouts  */
 #define TIMEOUT_IDLE 60
-#define TIMEOUT_RECV 300
+#define TIMEOUT_RECV 150
 
 /*  Process States  */
 #define IDLE 0
