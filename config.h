@@ -31,6 +31,14 @@
 #define printinfo(args...)
 #endif
 
+#define ERR 1 
+#ifdef  ERR
+#define printerr(args...) printf(args);
+#else
+#define printerr(args...)
+#endif
+
+
 #define SEL_DEBUG 0
 #define printsel(args...) if (SEL_DEBUG > 0) printf(args)
 
@@ -48,20 +56,21 @@
 #define PORT 10140
 
 /* Discretionary Declarations */
-#define MAX_BUFFER_SIZE 512
-#define SEND_BUFFER_SIZE 10
-#define MIN_SEND_SIZE 1
-#define BATCH_RECEIVE 8
-#define STATUS_TRIGGER 2000
-#define NAK_TRIGGER 10000
-#define RESEND_TRIGGER 1
-#define TRIGGER_DIVISOR 2
-#define NAK_QUOTA 5
-#define NAK_BACKOFF (SEND_BUFFER_SIZE/ 2)
+#define MAX_BUFFER_SIZE 256
+#define MAX_SEND_SIZE 64
+#define MIN_SEND_SIZE 4
+#define WINDOW_SIZE (MAX_SEND_SIZE + 4)
+#define BATCH_RECEIVE 7
+#define STATUS_TRIGGER 2048
+#define NAK_TRIGGER 20000
+#define RESEND_TRIGGER 2
+#define TRIGGER_DIVISOR 16
+#define NAK_QUOTA 29
+#define NAK_BACKOFF (MAX_SEND_SIZE/ 2)
 
 /* Timeouts  */
 #define TIMEOUT_IDLE 60
-#define TIMEOUT_RECV 150
+#define TIMEOUT_RECV 50
 
 /*  Process States  */
 #define IDLE 0
